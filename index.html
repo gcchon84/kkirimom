@@ -25,7 +25,7 @@
 <!-- 홈 화면에 추가·즐겨찾기 아이콘 (끼리맘 로고) -->
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=2">
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=2">
-<link rel="manifest" href="manifest.webmanifest">
+<link rel="manifest" href="manifest.webmanifest?v=4">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="application-name" content="끼리맘">
@@ -3584,6 +3584,9 @@ function seedState() {
 }
 
 var state = { version: VERSION, activeRoomId: null, agents: {}, rooms: [] };
+/* 2026-11-22 지용 님 — 공식 주소로 들어오면 늘 게이트(‘시작하기’)부터.
+   ‘시작하기’를 누르면 false — 이 페이지를 보는 동안만 유지한다(저장하지 않는다). */
+var entryGate = false;
 var lastSaved = null;
 var saveWarned = false;
 
@@ -3624,7 +3627,7 @@ function load() {
     });
     state.rooms = state.rooms.filter(function (r) { return !(r && r.id === "r_lounge" && !r.remote); })
       .map(normalizeRoom);
-    if (!state.rooms.some(function (r) { return r.id === state.activeRoomId; })) state.activeRoomId = state.rooms.length ? state.rooms[0].id : null;
+    if (!state.rooms.some(function (r) { return r.id === state.activeRoomId; })) state.activeRoomId = null;
     return true;
   } catch (e) { return false; }
 }
@@ -3638,25 +3641,17 @@ function save() {
   } catch (e) {
     if (!saveWarned) { saveWarned = true; toast("브라우저 저장 공간이 부족해 이번 대화는 저장되지 않아요"); }
   }
-  saveView();
 }
-/* 마지막 화면 — 카톡 등으로 나갔다 돌아와 페이지가 새로 열려도 방을 보고 있었으면 그 방을 다시 연다.
-   홈 버튼(goHome)이나 로그아웃(resetSessionView)처럼 명시적으로 나갈 때만 지운다. */
-var VIEW_KEY = "kkiri.view.v1";
-function saveView() {
-  try {
-    if (state.view === "room" && state.activeRoomId) localStorage.setItem(VIEW_KEY, String(state.activeRoomId));
-    else if (state.view === "home") localStorage.removeItem(VIEW_KEY);
-    /* state.view 가 아직 정해지지 않은 부팅 첫 순간에는 건드리지 않는다(복원값을 지우면 안 된다) */
-  } catch (e) {}
-}
-function savedViewRoomId() {
-  try { return String(localStorage.getItem(VIEW_KEY) || ""); } catch (e) { return ""; }
-}
+/* 마지막으로 보던 방은 저장하지 않는다(2026-11-22 지용 님) — 공식 주소로 다시 들어오면 늘 게이트부터. */
 
 function activeRoom() {
-  for (var i = 0; i < state.rooms.length; i++) if (state.rooms[i].id === state.activeRoomId) return state.rooms[i];
-  return state.rooms[0] || null;
+  for (var i = 0; i < state.rooms.length; i++) {
+    if (state.rooms[i].id === state.activeRoomId) {
+      /* 목록 밖(다른 서비스) 방은 이 화면에서 열지 않는다 */
+      return roomInService(state.rooms[i]) ? state.rooms[i] : null;
+    }
+  }
+  return firstServiceRoom();
 }
 /* 목록에 보이는 AI — 지운 AI(‘지운 AI’ 표시)는 뺀다. 옛 대화의 이름 표시용으로 state.agents 에는 남는다. */
 function allAgents() {
@@ -4367,7 +4362,10 @@ function renderRoom() {
   renderAutoTalkBanner(r);
 }
 
-function renderAll() { renderSidebar(); renderRoom(); renderHome(); applyView(); renderStartUI(); }
+function renderAll() {
+  guardServiceRoom();   /* 다른 서비스 방이 선택돼 있으면 이 화면에서는 내리고 홈으로 */
+  renderSidebar(); renderRoom(); renderHome(); applyView(); renderStartUI();
+}
 
 /* =========================================================
    13.5 끼리맘 홈 — 밖(서비스 입구 · 내 계정 워크스페이스)
@@ -4505,7 +4503,7 @@ async function removeRoomsBulk(rooms) {
   if (!gone.length) { toast("정리하지 못했어요 · 잠시 뒤 다시 시도해 주세요"); return -1; }
   if (state.activeRoomId && gone.indexOf(state.activeRoomId) >= 0) {
     state.activeRoomId = null;
-    var left = state.rooms.filter(function (x) { return gone.indexOf(x.id) < 0; });
+    var left = state.rooms.filter(function (x) { return gone.indexOf(x.id) < 0 && roomInService(x); });
     if (left.length) state.activeRoomId = left[0].id;
   }
   state.rooms = state.rooms.filter(function (x) { return gone.indexOf(x.id) < 0; });
@@ -4581,7 +4579,6 @@ function applyView() {
 function goHome() {
   state.view = "home";
   aiIdleClear();                  /* 방을 나가면 무응답 퇴장 시계도 멈춘다 */
-  saveView();                     /* 홈으로 나가면 기억해 둔 방을 잊는다 */
   closeSidebar();
   renderHome();
   applyView();
@@ -7761,7 +7758,7 @@ function closeSidebar() {
 function selectRoom(id) {
   var target = null;
   state.rooms.forEach(function (r) { if (r.id === id) target = r; });
-  if (!target) return;
+  if (!target || !roomInService(target)) return;   /* 다른 서비스 목록의 방은 이 화면에서 열지 않는다 */
   if (run.active) {
     run.epoch++;
     run.active = false; run.paused = false; run.typingAgent = null; run.typingSet = []; run.typingName = null; run.relayWait = null; run.cooldownLeft = 0;
@@ -8150,6 +8147,68 @@ function inRoomList(r) {
   /* 끼리맘 — KKIRIMOM_ROOM_CATS 9종(임신·신생아·이유식·건강·용품·나들이·맘수다·육오빠·기타)만 목록에 올린다.
      저장된 주제 키를 그대로 본다 — 끼리 본체의 etc(기타) 방이 별칭으로 섞여 들어오지 않게 한다. */
   return !!KKIRIMOM_ROOM_CATS[roomRawCatKey(r)];
+}
+/* 2026-11-22 지용 님 — 이 화면에서 열 수 있는 방은 ‘이 서비스 목록의 방’뿐이다.
+   같은 계정·같은 DB 를 쓰는 끼리↔끼리맘 방이 curId·마지막 화면으로 선택되면
+   사이드바는 ‘내 대화방 0’인데 뒤에는 그 방이 열리던 버그가 있었다.
+   목록 밖 방은 열지 않고 홈/게이트로 되돌리며, ?code= 로 와도 다른 서비스 방이면 입장하지 않는다. */
+var OTHER_SERVICE = "끼리";          /* 끼리맘 빌드 — 이 화면에서 열 수 없는 다른 서비스는 끼리 */
+function roomInService(r) { return !!r && inRoomList(r); }
+/* 이 서비스 목록의 첫 방(없으면 null) */
+function firstServiceRoom() {
+  var rooms = state.rooms || [];
+  for (var i = 0; i < rooms.length; i++) if (roomInService(rooms[i])) return rooms[i];
+  return null;
+}
+/* 저장돼 있던 선택(curId)이 이 서비스 방이 아니면 첫 방(없으면 null)으로 맞춘다 — 화면은 건드리지 않는다. */
+function settleActiveRoomId() {
+  var rooms = state.rooms || [];
+  for (var i = 0; i < rooms.length; i++) {
+    if (rooms[i] && rooms[i].id === state.activeRoomId) {
+      if (roomInService(rooms[i])) return rooms[i];
+      break;
+    }
+  }
+  var first = firstServiceRoom();
+  state.activeRoomId = first ? first.id : null;
+  return first;
+}
+/* 부팅 — 열 방이 없으면 홈(게이트)으로 간다. */
+function settleActiveRoom() {
+  var r = settleActiveRoomId();
+  if (!r) state.view = "home";
+  return r;
+}
+/* 그리는 순간의 안전장치 — 어느 경로로든 다른 서비스 방이 선택돼 있으면 내린다. */
+function guardServiceRoom() {
+  if (!state.activeRoomId) return false;
+  var rooms = state.rooms || [];
+  for (var i = 0; i < rooms.length; i++) {
+    var r = rooms[i];
+    if (!r || r.id !== state.activeRoomId) continue;
+    if (roomInService(r)) return false;
+    /* ?code= 로 들어와 서버 목록을 받는 중이면 ‘들어가는 중’ 화면을 유지한다 */
+    if (pendingJoin && ((pendingJoin.room === r.id) ||
+        (pendingJoin.code && String(r.inviteCode || "").toUpperCase() === pendingJoin.code))) return false;
+    state.activeRoomId = null;
+    if (state.view === "room") state.view = "home";
+    try { save(); } catch (e) {}
+    return true;
+  }
+  return false;
+}
+/* 다른 서비스의 초대 링크 — 그 방을 열지 않고 게이트(시작하기)로 돌려보낸다. */
+function blockForeignJoin(room) {
+  if (!room || roomInService(room)) return false;
+  pendingJoin = null;
+  try { clearJoinQuery(); } catch (e) {}
+  state.activeRoomId = null;
+  state.view = "home";
+  entryGate = true;                    /* 방은 ‘시작하기’ 뒤에 내 목록에서 고른다 */
+  try { save(); } catch (e) {}
+  try { renderAll(); } catch (e) {}
+  toast("이 방은 " + OTHER_SERVICE + "에서 여는 방이에요 · 이 화면에서는 열리지 않아요");
+  return true;
 }
 
 /* 아이콘 선택 버튼의 읽을 이름 — 화면에는 SVG만 보이므로 값은 aria-label로 남긴다. */
@@ -8624,7 +8683,10 @@ function roomAskRemove(r) {
 }
 function afterRoomRemoved(r, wasOwner, quiet) {
   state.rooms = state.rooms.filter(function (x) { return x.id !== r.id; });
-  if (state.activeRoomId === r.id) state.activeRoomId = state.rooms.length ? state.rooms[0].id : null;
+  if (state.activeRoomId === r.id) {
+    var nextRoom = firstServiceRoom();
+    state.activeRoomId = nextRoom ? nextRoom.id : null;
+  }
   save();
   renderAll();
   if (state.activeRoomId) {
@@ -9718,7 +9780,8 @@ function dbApply(roomRows, agentRows, fresh) {
   if (!roomRows.length) return false;
   state.rooms = rooms;
   sortRoomsNewest();
-  if (!rooms.some(function (r) { return r.id === state.activeRoomId; })) state.activeRoomId = rooms.length ? rooms[0].id : null;
+  /* 목록 밖(다른 서비스) 방은 고르지 않는다 — 이 서비스 방이 0개면 null(홈·게이트)로 둔다 */
+  settleActiveRoomId();
   return true;
 }
 /* 끼리 본체(업무·여행·일상·고민·자유) 분류 — 끼리맘 목록에서 거른다. */
@@ -10513,8 +10576,12 @@ async function dbInit() {
       if (!target && pendingJoin.code) {
         state.rooms.forEach(function (r) { if (String(r.inviteCode || "").toUpperCase() === pendingJoin.code) target = r; });
       }
-      if (target) {
+      if (target && !roomInService(target)) {
+        /* 다른 서비스의 방 코드 — 이 화면에서는 열지 않고 게이트로 되돌린다 */
+        blockForeignJoin(target);
+      } else if (target) {
         state.activeRoomId = target.id;
+        state.view = "room";
         toast("초대받은 방 ‘" + target.name + "’(으)로 들어왔어요");
       } else if (pendingJoin.code) {
         toast("초대 링크를 확인하지 못했어요 · 코드가 만료됐을 수 있어요");
@@ -11185,7 +11252,7 @@ function renderAccount() {
 }
 /* 시작 전(로그인·게스트 입장 전)에는 방 목록·닉네임·크레딧을 숨기고 ‘끼리맘 시작하기’ 하나만 남긴다.
    로그인·게스트 시작이 끝나면(signedIn) 원래 화면으로 바로 돌아온다. */
-function startDone() { return !!V3.signedIn || V3.mode === "local"; }
+function startDone() { return (!!V3.signedIn || V3.mode === "local") && !entryGate; }
 function renderStartUI() {
   var done = startDone();
   var set = function (id, hide) { var el = $(id); if (el) el.hidden = !!hide; };
@@ -11559,6 +11626,7 @@ function renderGuestButton() {
    ‘시작하기’ 한 번이면 로그인 창 대신 익명(anon) 세션을 열고 바로 홈으로 들어간다.
    초대 링크(?code=·?room=)로 들어온 사람은 autoJoinPending 이 같은 일을 이미 한다. */
 var guestEnsure = null;
+var bootV3Run = null;          /* 부팅(세션 복원)이 끝났는지 — ‘시작하기’가 복원 전에 새 익명 세션을 만들지 않게 */
 function ensureGuest() {
   if (!GUEST_ONLY_MODE) return Promise.resolve(false);
   if (V3.mode !== "cloud" || !db.client) return Promise.resolve(false);
@@ -11566,6 +11634,9 @@ function ensureGuest() {
   if (guestEnsure) return guestEnsure;
   guestEnsure = (async function () {
     try {
+      /* 부팅이 끝난 뒤에 판단한다 — 복원된 세션이 있으면 새 익명 세션을 만들지 않는다 */
+      if (bootV3Run) { try { await bootV3Run; } catch (e0) {} }
+      if (V3.signedIn) { renderAll(); return true; }
       var res = await db.client.auth.signInAnonymously();
       if (!res || res.error) throw (res && res.error) || new Error("anonymous sign-in failed");
       var user = res.data && res.data.user;
@@ -11869,6 +11940,7 @@ function resetSessionView() {
   state.activeRoomId = null;
   if (V3.mode !== "mock") state.rooms = [];
   state.view = "home";
+  entryGate = true;                  /* 로그아웃 뒤에는 다시 게이트(시작하기)부터 */
   homeEdit.on = false; homeEdit.sel = {};
   sideEdit.on = false; sideEdit.sel = {};
   /* 5) 주소에 남은 초대 코드도 정리 */
@@ -12078,7 +12150,7 @@ async function claimGuestRooms(prev, prevRoomId) {
     V3.myRoles[rm.id] = "owner";        /* 재입장으로 'guest'가 들어와도 화면은 방장으로 유지 */
     if (!serverOk) claimState.keep.push(rm);
   }
-  if (prevRoomId && targets.some(function (rm) { return String(rm.id) === String(prevRoomId); })) {
+  if (prevRoomId && targets.some(function (rm) { return String(rm.id) === String(prevRoomId) && roomInService(rm); })) {
     state.activeRoomId = prevRoomId;
     state.view = "room";
   }
@@ -12103,7 +12175,11 @@ function keepClaimedRoomsLocal() {
     added = true;
   }
   if (added) {
-    if (claimState.prevRoomId) { state.activeRoomId = claimState.prevRoomId; state.view = "room"; }
+    if (claimState.prevRoomId) {
+      state.activeRoomId = claimState.prevRoomId;
+      state.view = "room";
+      settleActiveRoom();              /* 목록 밖(다른 서비스) 방이면 홈으로 되돌린다 */
+    }
     try { save(); } catch (e) {}
     try { renderAll(); } catch (e) {}
   }
@@ -13062,6 +13138,8 @@ function wireV3() {
   if (hsc) hsc.addEventListener("click", openStart);
   var gateBtn = $("gateStartBtn");
   if (gateBtn) gateBtn.addEventListener("click", function () {
+    /* 게이트를 넘긴다 — 세션이 이미 있으면 바로 홈, 없으면 익명 세션을 열고 홈 */
+    if (entryGate) { entryGate = false; renderAll(); }
     /* 무로그인 게스트 모드 — 로그인 창 없이 바로 익명 세션으로 홈(새 방 · 내 방 목록)에 들어간다 */
     if (GUEST_ONLY_MODE) { ensureGuest(); return; }
     openStart();
@@ -13935,16 +14013,13 @@ if (MOCK && (!bootedLocal || !state.rooms.length)) {
   state = seedState();
   save();
 }
-/* ?code=·?room= 초대 링크로 들어오면 그 대화방, 아니면 끼리맘 홈에서 시작한다.
-   초대 링크가 아니고 직전에 방을 보고 있었다면 그 방을 그대로 다시 연다 — 새로고침·카톡 공유 후 복귀 대비. */
+/* ?code=·?room= 초대 링크로 들어오면 그 대화방, 아니면 늘 게이트(‘시작하기’)부터.
+   2026-11-22 지용 님 — 공식 주소(kkiri.ai.kr 루트)로는 마지막에 보던 방을 다시 열지 않는다.
+   방은 게이트를 넘긴 뒤 홈·사이드바 목록에서 고른다. */
 state.view = pendingJoin ? "room" : "home";
-if (!pendingJoin) {
-  var lastViewRoom = savedViewRoomId();
-  if (lastViewRoom && state.rooms.some(function (r) { return r.id === lastViewRoom; })) {
-    state.activeRoomId = lastViewRoom;
-    state.view = "room";
-  }
-}
+entryGate = !pendingJoin;
+if (pendingJoin) state.activeRoomId = null;   /* 서버에서 초대 방을 확인할 때까지는 아무 방도 열지 않는다 */
+else settleActiveRoom();                      /* 목록 밖(다른 서비스) 방이 저장돼 있으면 첫 방이나 홈으로 */
 ensurePool();
 renderSwatches();
 wire();
@@ -13965,7 +14040,7 @@ renderApi();
 syncFields();
 growInput();
 setLiveStatus("wait", "연결 중…");
-bootV3();
+bootV3Run = bootV3();
 window.addEventListener("beforeunload", function () { try { save(); } catch (e) {} });
 /* 방장이 창을 닫거나 다른 앱으로 잡시 나가면 토론을 잡시 세우고(3분 안에 돌아오면 이어짐),
    돌아왔을 때는 멈춘 자리에서 다시 이어 간다(2026-11-22 지용 님 요청). */
