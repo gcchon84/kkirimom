@@ -11189,7 +11189,7 @@ function renderExpertPicker() {
       var catFree = draft ? catByKey(roomForm.category).label : categoryLabelOf(r);
       hint.innerHTML =
         '<b class="hint-lead">' + esc(catFree) + '에 특화된 <b>전문가 AI 팀</b>이에요.</b>'
-        + '<span class="hint-line">' + (isGuest() ? "게스트는 끼리맘 AI를 10회까지 체험할 수 있어요 · 남은 " + guestAiLeft() + "회 · 가입하면 무제한이에요." : "모든 끼리맘 AI가 무료예요 · 마음껏 불러 보세요.") + '</span>';
+        + (isGuest() ? '<span class="hint-line">게스트는 끼리맘 AI를 10회까지 체험할 수 있어요 · 남은 ' + guestAiLeft() + '회 · 가입하면 무제한이에요.</span>' : '');
     } else {
       var catLabel = draft ? catByKey(roomForm.category).label : categoryLabelOf(r);
       /* 크레딧은 끼리맘 AI를 부를 때만 나간다 — 탭 맨 위 안내에서 바로 보이게 */
