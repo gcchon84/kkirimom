@@ -2498,6 +2498,7 @@ window.__KKIRI_BOOT = (function () {
     <div class="side-foot">
       <button type="button" class="side-donate side-invite" id="sideInviteBtn" title="친구 초대 · 친구가 가입하면 +300 크레딧"><svg class="ico sm" aria-hidden="true" focusable="false"><use href="#i-gift"></use></svg><span>친구 초대</span><em class="inv-badge" aria-label="+300 크레딧"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-gem"></use></svg>+300</em></button>
       <a class="side-donate side-maker" id="sideMakerBtn" href="https://brand.naver.com/65ppa" target="_blank" rel="noopener noreferrer" title="만든 곳 · 육오빠 (brand.naver.com/65ppa)"><svg class="ico sm" aria-hidden="true" focusable="false"><use href="#i-gift"></use></svg><span>만든 곳 · 육오빠</span></a>
+      <a class="side-donate side-openchat" id="sideOpenchatBtn" href="https://open.kakao.com/o/gKRDFaYi" target="_blank" rel="noopener noreferrer" title="끼리맘 카카오톡 오픈채팅방"><svg class="ico sm" aria-hidden="true" focusable="false"><use href="#i-chat"></use></svg><span>오픈채팅</span></a>
       <button type="button" class="side-donate side-feedback" id="sideFeedbackBtn" title="불편한 점·아이디어 보내기"><svg class="ico sm" aria-hidden="true" focusable="false"><use href="#i-chat"></use></svg><span>의견 보내기</span></button>
       <button type="button" class="side-donate side-install" id="sideInstallBtn" title="홈 화면에 추가 · 즐겨찾기"><svg class="ico sm" aria-hidden="true" focusable="false"><use href="#i-star"></use></svg><span>홈 화면에 추가</span></button>
       <p class="side-version">Kkirimom</p>
@@ -2553,6 +2554,7 @@ window.__KKIRI_BOOT = (function () {
         <div class="home-foot" id="homeFoot">
           <button type="button" class="home-donate home-invite" id="homeInviteBtn" title="친구 초대 · 친구가 가입하면 +300 크레딧"><svg class="ico sm" aria-hidden="true" focusable="false"><use href="#i-gift"></use></svg><span>친구 초대</span><em class="inv-badge" aria-label="+300 크레딧"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-gem"></use></svg>+300</em></button>
           <a class="home-donate home-maker" id="homeMakerBtn" href="https://brand.naver.com/65ppa" target="_blank" rel="noopener noreferrer" title="만든 곳 · 육오빠 (brand.naver.com/65ppa)"><svg class="ico sm" aria-hidden="true" focusable="false"><use href="#i-gift"></use></svg><span>만든 곳 · 육오빠</span></a>
+          <a class="home-donate home-openchat" id="homeOpenchatBtn" href="https://open.kakao.com/o/gKRDFaYi" target="_blank" rel="noopener noreferrer" title="끼리맘 카카오톡 오픈채팅방"><svg class="ico sm" aria-hidden="true" focusable="false"><use href="#i-chat"></use></svg><span>오픈채팅</span></a>
           <button type="button" class="home-donate home-feedback" id="homeFeedbackBtn" title="불편한 점·아이디어 보내기"><svg class="ico sm" aria-hidden="true" focusable="false"><use href="#i-chat"></use></svg><span>의견 보내기</span></button>
           <button type="button" class="home-donate" id="homeInstallBtn" title="홈 화면에 추가 · 즐겨찾기"><svg class="ico sm" aria-hidden="true" focusable="false"><use href="#i-star"></use></svg><span>홈 화면에 추가</span></button>
         </div>
@@ -2768,7 +2770,7 @@ window.__KKIRI_BOOT = (function () {
           <button type="button" class="pick" data-tone="casual" aria-pressed="true">친구말 (기본)</button>
           <button type="button" class="pick" data-tone="polite" aria-pressed="false">존댓말</button>
         </div>
-        <p class="modal-note" id="rfToneNote" style="margin-top:6px">이 방 AI가 답할 때 쓰는 말투예요 · 친구말은 다정한 ~했어체, 존댓말은 ~요/~습니다</p>
+        <p class="modal-note" id="rfToneNote" style="margin-top:6px">친구말은 다정한 ~했어체 · 존댓말은 ~요/~습니다</p>
       </div>
       <div class="field-row">
         <div class="field" id="rfEmojiField"><span>아이콘</span><div class="pick-row" id="rfEmoji"></div></div>
@@ -6300,7 +6302,7 @@ function systemFor(agent, phase) {
   /* 모바일에서 한눈에 들어오게: 보통 답변은 1~2문장, 토론요약(converge)만 요약이라 2~4문장 */
   var lengthRule = phase === "converge" ? "한국어로 2~4문장" : "한국어로 핵심만 1~2문장(짧고 읽기 쉽게)";
   var toneClause = toneOf(r) === "polite"
-    ? "반드시 한국어 존댓말(~요/~습니다)로만 답하고, 가벼운 수다·농담·짧은 한마디에서도 반말을 쓰지 않는다."
+    ? "반드시 한국어 존댓말(~요/~습니다)로만 답하고, 가벼운 수다·농담·짧은 한마디에서도 반말을 쓰지 않는다. 문장 끝은 ‘~요’ 또는 ‘~습니다’로 맺고 ‘~죠/~지/~네/~군/~야’ 같은 반말·구어 종결로 끝내지 않는다."
     : "다정하고 편한 친구 말투(~했어, ~같아, ~해 보자, ~어때?)로 답하고, ‘~한다/~그렇다/~필요하다’ 같은 해라체·보고서체와 ‘~요/~습니다’ 존댓말은 쓰지 않는다.";
   return toneRuleFor(r) + "\n" + MEDICAL_RULE + "\n" + base + roleDirective(r, agent) + "\n방: " + r.name + " / 안건: " + (r.agenda || "없음") +
     "\n함께 있는 AI: " + team +
