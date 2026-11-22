@@ -2770,7 +2770,6 @@ window.__KKIRI_BOOT = (function () {
           <button type="button" class="pick" data-tone="casual" aria-pressed="true">친구말 (기본)</button>
           <button type="button" class="pick" data-tone="polite" aria-pressed="false">존댓말</button>
         </div>
-        <p class="modal-note" id="rfToneNote" style="margin-top:6px">친구말은 다정한 ~했어체 · 존댓말은 ~요/~습니다</p>
       </div>
       <div class="field-row">
         <div class="field" id="rfEmojiField"><span>아이콘</span><div class="pick-row" id="rfEmoji"></div></div>
@@ -11764,13 +11763,21 @@ function greetAgentOnEntry(agentId, room) {
     return !(res && res.error);
   }, function () { return false; });
 }
-/* 여러 명 동시 입장 — 하나씩 순서대로 보낸다(동시 INSERT 로 인사가 누락되던 문제).
-   체인은 실패해도 멈추지 않는다: 한 명이 실패해도 다음 AI 인사는 계속 보낸다. */
+/* 여러 명 동시 입장 — 하나씩 순서대로, 사이를 0.5초 띄워 보낸다.
+   (한꺼번에 뜨지 않고 한 명씩 말하는 느낌 + 동시 INSERT 로 인사가 누락되던 문제)
+   첫 인사 앞에도 170ms 여유를 둬서 초대 창이 닫힌 뒤 차례로 올라오게 한다.
+   체인은 실패해도 멈추지 않는다: 한 명이 실패해도 다음 AI 인사는 계속 보낸다.
+   방이 바뀌어도 안전하다 — greetAgentOnEntry 가 방 인자를 직접 받아 그 방으로 저장한다. */
 function greetAgentsOnEntry(ids, room) {
-  var chain = Promise.resolve(true);
-  (ids || []).slice().forEach(function (id) {
+  var list = (ids || []).slice();
+  if (!list.length) return Promise.resolve(true);
+  var chain = sleep(170);
+  list.forEach(function (id, i) {
     chain = chain.then(function () {
       return Promise.resolve().then(function () { return greetAgentOnEntry(id, room); }).catch(function () { return false; });
+    }).then(function (ok) {
+      /* 다음 AI 가 있으면 0.5초 쉬었다 올린다(마지막 인사 뒤에는 기다리지 않는다) */
+      return (i < list.length - 1) ? sleep(500).then(function () { return ok; }) : ok;
     });
   });
   return chain;
