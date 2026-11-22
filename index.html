@@ -3613,6 +3613,14 @@ function normalizeRoom(r) {
   return r;
 }
 
+/* 2026-11-22 지용 님 — 시드 방 '프로젝트방'(r_plan)은 DB에서 비공개로 돌렸다(is_public=false).
+   예전에 이 방을 보던 브라우저의 localStorage 목록에 남아 있어도 화면에 올리지 않는다.
+   사용자가 새로 만든 방은 id 가 r_ + 임의 문자라 여기 걸리지 않는다 — 목록 그대로 유지. */
+var RETIRED_ROOM_IDS = { r_plan: 1 };
+function dropRetiredRooms(list) {
+  return (list || []).filter(function (r) { return !(r && RETIRED_ROOM_IDS[String(r.id)]); });
+}
+
 function load() {
   try {
     var raw = localStorage.getItem(STORE_KEY);
@@ -3625,7 +3633,8 @@ function load() {
       var a = state.agents[id];
       if (a && a.type === "builtin" && a.model === "gemini") a.model = "auto";
     });
-    state.rooms = state.rooms.filter(function (r) { return !(r && r.id === "r_lounge" && !r.remote); })
+    state.rooms = dropRetiredRooms(state.rooms)
+      .filter(function (r) { return !(r && r.id === "r_lounge" && !r.remote); })
       .map(normalizeRoom);
     if (!state.rooms.some(function (r) { return r.id === state.activeRoomId; })) state.activeRoomId = null;
     return true;
