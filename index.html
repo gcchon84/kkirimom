@@ -2128,6 +2128,8 @@ window.__KKIRI_BOOT = (function () {
   };
 })();
 </script>
+<!-- 카카오 JS SDK — 카톡 인앱 브라우저에서도 카톡 친구 선택창을 바로 연다 (2026-11-22 지용 님 요청) -->
+<script id="kakaoSdk" async src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.4/kakao.min.js"></script>
 </head>
 <body>
 <!-- ================= ㄲㄹ 톤 듀오톤 픽토그램 (인라인 SVG 스프라이트) ================= -->
@@ -4524,9 +4526,8 @@ function srcBadge(m) {
 var ENGINE_TAG = { claude: "Claude", gemini: "Gemini", gpt: "GPT" };
 function engineOf(m) {
   if (!m || !m.who || m.who === "user" || m.who === "system" || m.who === "card") return "";
-  if (m.kind === "greet") return "";
   var src = String(m.src || "");
-  if (src === "demo" || src === "fallback" || src === "ext" || src === "greet") return "";
+  if (src === "demo" || src === "fallback" || src === "ext") return "";
   var a = state.agents[m.who];
   if (!a || a.type === "webhook") return "";
   var cfg = String(m.config || "");
@@ -5947,6 +5948,30 @@ function sysAct(name) {
   if (name === "credit") { openCredit(); return; }
 }
 
+/* 2026-11-22 지용 님 — 모바일에서 화면을 바꾸거나 앱을 잠깐 떠나면 진행 중이던 AI 요청이 status 0(연결 끊김)으로 끝난다.
+   그건 실패가 아니라 '잠깐 끊김'이다 — 실패 안내를 띄우지 않고, 돌아왔을 때 그 차례를 다시 부른다. */
+var turnRetryPending = null;
+function turnScreenAway() {
+  var hidden = false;
+  try { hidden = !!(document.hidden || (document.visibilityState && document.visibilityState !== "visible")); } catch (e) {}
+  return hidden || !!run.awayAt;
+}
+function turnRetryQueue(agentId, phase) {
+  turnRetryPending = { id: String(agentId || ""), phase: phase || "", at: Date.now(), roomId: state.activeRoomId };
+}
+function turnRetryRun() {
+  var p = turnRetryPending;
+  if (!p) return false;
+  if (Date.now() - (p.at || 0) > 120000) { turnRetryPending = null; return false; }
+  if (turnScreenAway()) return false;                  /* 아직 화면 밖·자리 비움 — 돌아오면 그때 다시 */
+  if (p.roomId !== state.activeRoomId) return false;    /* 다른 방으로 옮겼으면 그 차례는 두지 않는다 */
+  var a = state.agents[p.id];
+  if (!a) { turnRetryPending = null; return false; }
+  if (run.typingAgent) return false;                    /* 다른 AI가 말하는 중이면 끝난 뒤에 */
+  turnRetryPending = null;
+  try { speak(a, p.phase, run.epoch); } catch (e) {}
+  return true;
+}
 /* 세션 만료 안내를 한 번만 띄우기 위한 기록 — 토론에서 AI 여러 명이 연달아 실패해도 문구가 도배되지 않는다 */
 var sessionNoticeAt = 0;
 var SK_NOTICE_RE = /로그인 세션이 끝났|세션이 만료|AUTH_INVALID/;
@@ -5982,11 +6007,22 @@ async function speak(agent, phase, ep) {
       out.src = "fallback";
     }
   } catch (e) {
+    /* 화면 전환·자리 비움으로 끊긴 턴 — 실패 안내 대신 조용히 멈추고, 돌아오면 이 차례를 다시 부른다 */
+    if (e && Number(e.status) === 0 && turnScreenAway()) {
+      typingStop(agent.id);
+      turnRetryQueue(agent.id, phase);
+      renderTimeline(true);
+      updateMeters();
+      return;
+    }
     if (route === "webhook") {          /* 웹훅 실패 → 다른 AI·데모로 대신 답하지 않는다 */
       guide = {
         text: "연결한 AI가 응답하지 않았어요. 주소와 서버 상태를 확인해 주세요." + (e && e.msg ? " · " + e.msg : ""),
         acts: [{ label: "연결 확인 안내", act: "invite" }]
       };
+    } else if (Number(e && e.status) === 0 && route !== "kkiri-byok") {
+      /* 끼리맘 AI 쪽 연결이 흔들린 경우 — 설정 창으로 보내지 않고 한 줄로만 조용히 알린다 */
+      guide = { text: agent.name + " · 잠시 연결이 흔들렸어요 · 다시 불러 주세요", acts: null };
     } else {
       note = (e && (e.cloud || e.webhook)) ? e.msg : friendlyError(e);
       guide = {
@@ -6434,8 +6470,9 @@ function autoOnVisibility() {
     return;
   }
   autoAwayCancelPending();
-  if (run.active && run.awayAt) { autoAwayReturn(); return; }
-  if (!run.active) autoResumeOnLoad(r);
+  if (run.active && run.awayAt) autoAwayReturn();
+  else if (!run.active) autoResumeOnLoad(r);
+  turnRetryRun();   /* 끊겨서 미뤄 둔 차례가 있으면 지금 다시 부른다 */
 }
 
 async function runMentions(text) {
@@ -10311,19 +10348,87 @@ function renderReferralShare() {
       : "지금은 서비스 주소만 보내요. 로그인하면 내 초대 코드가 자동으로 붙어 크레딧도 받을 수 있어요.");
 }
 function openReferralShare() { renderReferralShare(); openModal("refShareModal"); }
+/* ── 카카오톡 공유 (카카오 JS SDK) ─────────────────────────────────────────────
+   2026-11-22 지용 님 — 카톡 인앱 브라우저에서는 navigator.share 가 없어 초대가 '복사'로만 끝났다.
+   SDK 로 카톡 친구 선택창을 바로 띄우고, 안 되면 기기 공유창 → 복사 순서로 넘어간다.
+   제목·설명·이미지는 페이지의 OG 메타를 그대로 쓴다(끼리 / 끼리맘 각 사이트 값). */
+var KAKAO_JS_KEY = "05a4f6b19448b49ece39d0a948e9bb91";
+var KAKAO_SHARE_HOSTS = ["kkiri.ai.kr", "www.kkiri.ai.kr", "kkirimom.com", "www.kkirimom.com"];
+function kakaoMeta(prop) {
+  var el = document.querySelector('meta[property="' + prop + '"]');
+  return el ? (el.getAttribute("content") || "") : "";
+}
+function kakaoInit() {
+  try {
+    if (!KAKAO_JS_KEY || !window.Kakao) return false;
+    if (!Kakao.isInitialized()) Kakao.init(KAKAO_JS_KEY);
+    return !!Kakao.isInitialized();
+  } catch (e) { return false; }
+}
+/* 등록된 도메인에서만 SDK 로 보낸다 — 등록 안 된 주소(localhost 등)는 카톡 에러창이 뜬다 */
+function kakaoHostOk() {
+  var h = String(location.hostname || "").toLowerCase();
+  return KAKAO_SHARE_HOSTS.indexOf(h) > -1;
+}
+function kakaoShare(link, title, desc) {
+  var url = String(link || "");
+  if (!url) return false;
+  try {
+    if (!window.Kakao || typeof Kakao.Share === "undefined" || typeof Kakao.Share.sendDefault !== "function") return false;
+    var box = { mobileWebUrl: url, webUrl: url };
+    Kakao.Share.sendDefault({
+      objectType: "feed",
+      content: {
+        title: title || kakaoMeta("og:site_name") || document.title,
+        description: desc || kakaoMeta("og:description") || "",
+        imageUrl: kakaoMeta("og:image") || "",
+        link: box
+      },
+      buttons: [{ title: "끼리맘 시작하기", link: box }]
+    });
+    return true;
+  } catch (e) { return false; }
+}
+/* SDK 는 async 로 받으므로 클릭 시점에 아직 안 왔으면 최대 0.8초 기다린다 */
+function kakaoReady(cb) {
+  if (!KAKAO_JS_KEY) { cb(false); return; }   /* 키가 아직 없으면 예전 동작 그대로(지연 없음) */
+  var fin = false;
+  var done = function (ok) {
+    if (fin) return;
+    fin = true;
+    cb(!!(ok && kakaoHostOk() && kakaoInit()));
+  };
+  if (kakaoInit() && kakaoHostOk()) { done(true); return; }
+  var sc = $("kakaoSdk");
+  if (sc) {
+    sc.addEventListener("load", function () { done(true); });
+    sc.addEventListener("error", function () { done(false); });
+  }
+  setTimeout(function () { done(true); }, 800);
+}
+/* 카톡 인앱 브라우저이거나 SDK 가 준비됐으면 카톡 친구 선택창을 먼저 연다 */
+function shareViaKakao(link, title, desc, next) {
+  kakaoReady(function (ok) {
+    if (ok && kakaoShare(link, title, desc)) return;
+    if (typeof next === "function") next();
+  });
+}
 /* 카톡 등 기기 공유창을 먼저 쓰고, 없는 브라우저면 문구+링크를 복사해 붙여넣게 한다. */
 function shareReferral() {
   var text = referralNote();
-  if (navigator.share) {
-    /* 2026-11-22 지용 님 — 카톡 공유에 ‘끼리 초대 - 끼리 — …’처럼 제목이 앞에 덧붙지 않게 title 을 넘기지 않는다.
-       링크의 ?ref=(유입 통계)는 그대로 둔다. */
-    navigator.share({ text: text }).catch(function (e) {
-      if (e && e.name === "AbortError") return;
-      copyText(text, "공유 창을 열지 못해 초대 문구와 링크를 복사했어요 · 카카오톡에 붙여넣어 보내 주세요");
-    });
-    return;
-  }
-  copyText(text, "공유 창이 없는 브라우저예요 · 초대 문구와 링크를 복사했어요 · 카카오톡에 붙여넣어 보내 주세요");
+  var link = referralInviteLink();
+  shareViaKakao(link, "", "", function () {
+    if (navigator.share) {
+      /* 2026-11-22 지용 님 — 카톡 공유에 '끼리 초대 - 끼리 — …'처럼 제목이 앞에 덧붙지 않게 title 을 넘기지 않는다.
+         링크의 ?ref=(유입 통계)는 그대로 둔다. */
+      navigator.share({ text: text }).catch(function (e) {
+        if (e && e.name === "AbortError") return;
+        copyText(text, "공유 창을 열지 못해 초대 문구와 링크를 복사했어요 · 카카오톡에 붙여넣어 보내 주세요");
+      });
+      return;
+    }
+    copyText(text, "공유 창이 없는 브라우저예요 · 초대 문구와 링크를 복사했어요 · 카카오톡에 붙여넣어 보내 주세요");
+  });
 }
 function roomInviteLink(r) {
   if (!r) return "";
@@ -12306,7 +12411,12 @@ function greetAgentOnEntry(agentId, room) {
   if (recent && Date.now() - (recent.at || 0) < 20000) return Promise.resolve(false);
   var text = entryGreetingText(a, r);
   if (!text) return Promise.resolve(false);
-  var m = { id: uid("a"), who: agentId, text: text, at: Date.now(), kind: "greet", src: "greet", tin: 0, tout: 0, cost: 0, credits: 0 };
+  /* 2026-11-22 지용 님 — 입장 인사도 일반 답변과 똑같이 이름 옆에 엔진 태그(GPT/Claude/Gemini)를 단다.
+     인사 문장은 서버를 부르지 않지만, 이 AI가 답할 때 쓰는 엔진을 그대로 표시한다. */
+  var greetCfg = "";
+  try { greetCfg = (typeof kkiriConfigFor === "function") ? kkiriConfigFor(a) : ""; } catch (e) {}
+  if (!greetCfg) greetCfg = String(a.model || "");
+  var m = { id: uid("a"), who: agentId, text: text, at: Date.now(), kind: "greet", src: "greet", config: greetCfg, tin: 0, tout: 0, cost: 0, credits: 0 };
   r.messages.push(m);
   save();
   if (activeRoom() && activeRoom().id === r.id) { renderTimeline(true); renderSidebar(); }
@@ -12554,9 +12664,17 @@ async function cloudExpertTurn(agent, phase) {
   try {
     res = await postKkiriAi(body, { token: token, signal: sig.signal });
   } catch (e) {
-    sig.done();
-    if (e && e.name === "AbortError") throw { timeout: true };
-    throw { status: 0 };
+    if (e && e.name === "AbortError") { sig.done(); throw { timeout: true }; }
+    /* 2026-11-22 지용 님 — 화면 전환으로 한 번 끊긴 것은 실패로 보지 않고 약 1초 뒤 한 번 더 부른다 */
+    if (turnScreenAway()) { sig.done(); throw { status: 0 }; }
+    await sleep(1000);
+    try {
+      res = await postKkiriAi(body, { token: token, signal: sig.signal });
+    } catch (e2) {
+      sig.done();
+      if (e2 && e2.name === "AbortError") throw { timeout: true };
+      throw { status: 0 };
+    }
   }
   sig.done();
   try { data = await res.json(); } catch (e2) { data = null; }
@@ -13269,24 +13387,27 @@ function wire() {
   $("shareCopy").addEventListener("click", function () {
     copyText($("shareLink").value, "초대 링크를 복사했어요");
   });
-  /* 카카오톡 공유 — 공유 시트가 있으면 바로 열고, 없거나 실패하면 링크를 복사해 준다 */
+  /* 카카오톡 공유 — 카톡 SDK(친구 선택창) → 기기 공유 시트 → 링크 복사 순서 */
   $("shareKakao").addEventListener("click", function () {
     var r = activeRoom();
     var link = $("shareLink").value;
     if (!link) { toast("초대 링크를 확인하지 못했어요"); return; }
     var sayCopy = "초대 링크를 복사했어요 · 카카오톡에 붙여넣어 보세요";
-    if (navigator && typeof navigator.share === "function") {
-      try {
-        navigator.share({ title: (r && r.name) || "끼리맘 대화방", text: "끼리맘 대화방에 초대합니다", url: link })
-          .then(function () {})
-          .catch(function (err) {
-            if (err && (err.name === "AbortError" || err.name === "NotAllowedError")) return;  /* 취소는 조용히 넘김 */
-            copyText(link, sayCopy);
-          });
-        return;
-      } catch (e) { /* 공유 시트를 못 열면 복사로 넘어간다 */ }
-    }
-    copyText(link, sayCopy);
+    var roomTitle = (r && r.name) ? r.name : (kakaoMeta("og:site_name") || document.title);
+    shareViaKakao(link, roomTitle, "끼리맘 대화방에 초대합니다", function () {
+      if (navigator && typeof navigator.share === "function") {
+        try {
+          navigator.share({ title: (r && r.name) || "끼리맘 대화방", text: "끼리맘 대화방에 초대합니다", url: link })
+            .then(function () {})
+            .catch(function (err) {
+              if (err && (err.name === "AbortError" || err.name === "NotAllowedError")) return;  /* 취소는 그대로 조용히 넘김 */
+              copyText(link, sayCopy);
+            });
+          return;
+        } catch (e) { /* 공유 시트를 못 열면 복사로 넘어간다 */ }
+      }
+      copyText(link, sayCopy);
+    });
   });
 
   /* 초대 허브 3탭 (끼리맘 AI / 내 AI / 사람 초대) */
