@@ -554,6 +554,10 @@
   .card-actions button:hover{background:#FEF4F5;border-color:#F8DCE2}
   .card-actions button.dark{background:#3A2731;color:#fff;border-color:#3A2731}
   .card-actions button.dark:hover{background:#46323F}
+  /* 2026-11-22 지용 님 — 토론요약 카드 맨 끝 ‘다시 토론하기’(방장에게만). 공유 버튼과 같은 결, 한 줄 전체. */
+  .card-actions button.redebate{grid-column:1 / -1;border-color:#FFC9D4;background:#FFF4F6;color:#B23F58}
+  .card-actions button.redebate:hover{background:#FFE7EC;border-color:#FFAEBE}
+  .card-actions button.redebate .ico{--ico-fill:rgba(232,106,133,.18);color:#C94B66}
 
   /* ============ composer ============ */
   .composer{
@@ -2215,6 +2219,9 @@ window.__KKIRI_BOOT = (function () {
       <path d="M11 3.6h2v8.1h2.6L12 16.5 8.4 11.7H11z"/>
       <path d="M4.6 17.6v1.6a1.6 1.6 0 0 0 1.6 1.6h11.6a1.6 1.6 0 0 0 1.6-1.6v-1.6"/>
     </symbol>
+    <symbol id="i-redo" viewBox="0 0 24 24">
+      <path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.7 3.9v4.7h-4.7"/>
+    </symbol>
     <symbol id="i-play" viewBox="0 0 24 24"><path style="fill:currentColor;stroke:currentColor;stroke-width:1.4" d="M9.8 7.4 17.6 12l-7.8 4.6z"/></symbol>
     <symbol id="i-pause" viewBox="0 0 24 24">
       <rect style="fill:currentColor;stroke:none" x="8.4" y="6.6" width="2.8" height="10.8" rx="1.4"/>
@@ -3213,6 +3220,21 @@ window.__KKIRI_BOOT = (function () {
   </div>
 </div>
 
+<!-- ================= v3.7 · 방향을 담아 다시 토론 (토론요약 카드에서 방장만) ================= -->
+<div class="modal" id="redebateModal" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="rdTitle" style="max-width:440px">
+    <div class="sheet-head"><h2 id="rdTitle"><svg class="ico sm" aria-hidden="true" focusable="false"><use href="#i-redo"></use></svg> 다시 토론하기</h2><button class="icon-btn" type="button" data-close aria-label="닫기">✕</button></div>
+    <div class="sheet-body">
+      <p class="hint" style="margin-top:0">어떤 방향으로 다시 토론할까요? (아쉬운 점·바꿀 조건)</p>
+      <label class="field"><span>방장 의견</span>
+        <textarea id="rdInput" maxlength="300" placeholder="예: 예산 3만 원 이하로 좁히고, 유모차 편한 실내만 찾아 줘"></textarea>
+      </label>
+      <p class="hint">이전 요약에서 이미 나온 결론·제안은 빼고, 적어 주신 방향으로만 다시 토론해요.</p>
+      <div class="btn-row"><button class="btn" type="button" data-close>취소</button><button class="btn green" id="rdStart" type="button">다시 토론 시작</button></div>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <!-- 새 버전 안내 바 — AI가 말하는 중이거나 쓰던 글이 있을 때만 뜬다 -->
 <div class="upd-bar" id="updBar" role="status" aria-live="polite" hidden>
@@ -3233,7 +3255,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261122-2105-1cf169a8";
+var APP_BUILD_VER = "20261122-2126-374eb1de";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -3286,7 +3308,7 @@ var EMOJI_ICON_PAIRS = [
   ["🎁", "gift"], ["🐞", "bug"], ["✅", "check"], ["🟢", "dot"], ["🗑", "trash"],
   ["🙋", "hand"], ["🧠", "think"], ["🎓", "card"], ["💼", "card"], ["🛒", "cash"],
   ["🍜", "bowl"], ["🍱", "bowl"], ["🏔️", "map"], ["🎧", "coffee"], ["📚", "list"],
-  ["🎬", "play"], ["🧳", "plane"], ["📸", "card"]
+  ["🎬", "play"], ["🧳", "plane"], ["📸", "card"], ["🔄", "redo"], ["🔁", "redo"]
 ];
 var EMOJI_ICON = {};
 function emojiKey(e) { return String(e == null ? "" : e).replace(/[\uFE0F\uFE0E]/g, "").trim(); }
@@ -3513,9 +3535,13 @@ function turnDuplicate(text) {
   var mine = t.match(/\d+(?:[.,]\d+)?/g) || [];
   var msgs = r.messages.filter(function (m) {
     return m.who !== "system" && m.who !== "card" && m.who !== "user" && String(m.text || "").replace(/\s+/g, "").length >= 12;
-  }).slice(-8);
+  }).slice(-8).map(function (m) { return String(m.text || ""); });
+  /* 재토론 — 직전 요약에서 이미 나온 결론도 ‘이미 한 말’이다. 같은 소리를 또 하면 건너뛴다. */
+  if (run.active && run.mode === "roundtable" && run.redebate && run.redebate.excluded && run.redebate.excluded.length) {
+    run.redebate.excluded.slice(0, 8).forEach(function (s) { if (s) msgs.push(String(s)); });
+  }
   for (var i = 0; i < msgs.length; i++) {
-    var other = String(msgs[i].text || "");
+    var other = msgs[i];
     var sim = similarity(t, other);
     if (sim >= 0.45) return true;
     if (mine.length && sim >= 0.22) {
@@ -3902,7 +3928,7 @@ var run = {
    ========================================================= */
 var ROLE_DEFS = {
   advice:   { label: "총괄 자문",      focus: "전체를 보고 판단 기준과 다음 할 일을 정리하기", keys: ["총괄", "자문", "비서", "사회", "실행"] },
-  lead:     { label: "진행·요약",      focus: "순서를 잡고 마지막에 결정과 다음 할 일로 모아 정리하기", keys: ["사회", "실행", "진행", "비서", "총괄"] },
+  lead:     { label: "진행·요약",      focus: "순서를 잡고 마지막에 결론과 다음 할 일로 모아 정리하기", keys: ["사회", "실행", "진행", "비서", "총괄"] },
   proposal: { label: "핵심 제안",      focus: "바로 쓸 수 있는 안을 두 가지로 제안하기", keys: ["기획", "카피", "제안", "아이디어"] },
   copy:     { label: "아이디어·카피",  focus: "아이디어를 쓸 수 있는 문장으로 바꾸기", keys: ["카피", "기획", "아이디어", "창의"] },
   creative: { label: "창의 제안",      focus: "새로운 각도의 아이디어와 문장 제안하기", keys: ["카피", "기획", "아이디어", "창의"] },
@@ -4939,7 +4965,7 @@ function cardHtml(m) {
     list.forEach(function (it) { items += render(it); });
     body += '<div class="c-sec ' + cls + '"><h4>' + title + "</h4><ul>" + items + "</ul></div>";
   }
-  sec("결정", c.decisions, "", function (t) { return "<li>" + esc(t) + "</li>"; });
+  sec("결론", c.decisions, "", function (t) { return "<li>" + esc(t) + "</li>"; });
   sec("다음 할 일", c.todos, "todo", function (t) { return "<li>" + esc(t) + "</li>"; });
   sec("핵심 근거", c.evidence, "", function (t) { return "<li>" + esc(t) + "</li>"; });
   sec("이견 · 리스크", c.risks, "risk", function (t) { return "<li>" + esc(t) + "</li>"; });
@@ -4949,6 +4975,12 @@ function cardHtml(m) {
     "<span>" + c.stats.turns + "턴</span>" +
     (c.stats.credits && !FREE_LAUNCH_MODE ? "<span>" + creditsLabel(c.stats.credits) + " 크레딧</span>" : "") +
     "<span>" + esc(c.stats.duration) + "</span></div>";
+  /* 방향을 담아 다시 토론 — 방장에게만 보인다. 아쉬운 점을 적으면 같은 결론을 빼고 새 방향으로만 다시 돈다. */
+  var rr = activeRoom();
+  var reBtn = (rr && isRoomOwner(rr))
+    ? '<button type="button" class="redebate" data-card-redebate="' + esc(m.id) + '" title="아쉬운 점·바꿀 조건을 적어 새 방향으로 다시 토론해요">' +
+      icoHtml("redo", "sm") + ' 다시 토론하기</button>'
+    : "";
   return '<div class="card" data-card="' + esc(c.id) + '">' +
     '<div class="card-head"><h3>' + icoHtml("check", "sm") + " " + esc(c.title) + "</h3></div>" +
     '<div class="card-body">' + body + stats + "</div>" +
@@ -4957,6 +4989,7 @@ function cardHtml(m) {
     '<button type="button" data-card-mail="' + esc(m.id) + '">' + icoHtml("mail", "sm") + ' 이메일로 보내기</button>' +
     '<button type="button" data-card-txt="' + esc(m.id) + '">' + icoHtml("download", "sm") + ' 파일 저장 (.txt)</button>' +
     '<button type="button" data-card-copy="' + esc(m.id) + '">' + icoHtml("copy", "sm") + ' 전체 복사</button>' +
+    reBtn +
     "</div></div>";
 }
 
@@ -5568,18 +5601,18 @@ var DEMO = {
   open: {
     pikri: [
       { t: "안건은 “{agenda}”입니다. 참여는 {members} {n}명, 최대 {turns}라운드" + (FREE_LAUNCH_MODE ? ", 무료로 진행해요. " : ", 크레딧 상한 {budget}으로 잡았습니다. ") + "1차 의견을 듣고 쟁점을 두 개로 좁힌 뒤 토론요약까지 만들겠습니다." },
-      { t: "오늘 안건은 “{agenda}”입니다. 목표는 결정 1개와 다음 할 일 3개입니다. {members} 순서로 의견을 듣고, 중간에 제가 쟁점을 정리하겠습니다." },
+      { t: "오늘 안건은 “{agenda}”입니다. 목표는 결론 1개와 다음 할 일 3개입니다. {members} 순서로 의견을 듣고, 중간에 제가 쟁점을 정리하겠습니다." },
       { t: "“{agenda}” 시작하겠습니다. 참여 {n}명, 최대 {turns}라운드입니다. 서로 다른 관점을 먼저 듣고, 숫자로 확인할 것은 따로 표시하겠습니다." }
     ],
     generic: [
       { t: "안건은 “{agenda}”입니다. 참여 {n}명, 최대 {turns}라운드" + (FREE_LAUNCH_MODE ? ", 무료로 진행합니다. " : ", 크레딧 상한 {budget}입니다. ") + "먼저 1차 의견을 듣고 쟁점을 정리하겠습니다." },
-      { t: "“{agenda}” 시작하겠습니다. 목표는 결정 1개와 다음 할 일 3개입니다. 순서대로 말씀해 주세요." }
+      { t: "“{agenda}” 시작하겠습니다. 목표는 결론 1개와 다음 할 일 3개입니다. 순서대로 말씀해 주세요." }
     ]
   },
   opinion: {
     pikri: [
       { promo: true, t: "작년 12월 1주에 매출 38%가 몰렸습니다. 12/1~12/14 15% 할인 + 사은품 2종으로 가는 안을 제안합니다. 재고는 11/28까지 확정해 두면 안전합니다." },
-      { t: "실행 관점에서 보면 11/28까지 확정해야 12/1부터 바로 시작할 수 있습니다. 준비 기간이 3일 남는 셈이라, 오늘 결정 1개와 담당·기한만 정하죠." },
+      { t: "실행 관점에서 보면 11/28까지 확정해야 12/1부터 바로 시작할 수 있습니다. 준비 기간이 3일 남는 셈이라, 오늘 결론 1개와 담당·기한만 정하죠." },
       { t: "먼저 범위를 좁히죠. 이번 주에 결정할 것 2개와 다음 주로 미룰 것 3개를 나누면, 오늘은 1개만 정하면 됩니다." }
     ],
     kirini: [
@@ -5610,7 +5643,7 @@ var DEMO = {
     ],
     generic: [
       { t: "쟁점을 두 개로 정리합니다. 첫째는 범위, 둘째는 확인 방법입니다. 각자 반대 근거를 한 줄씩 보태 주세요." },
-      { t: "의견을 모아 보니 결정과 확인이 섞여 있습니다. 결정할 것과 확인할 것을 나눠서 반박해 보겠습니다." }
+      { t: "의견을 모아 보니 결론과 확인이 섞여 있습니다. 결정할 것과 확인할 것을 나눠서 반박해 보겠습니다." }
     ]
   },
   rebuttal: {
@@ -5641,15 +5674,15 @@ var DEMO = {
   },
   converge: {
     pikri: [
-      { promo: true, t: "정리합니다. 결정은 12/1~12/14 13% 할인 + 사은품 선택형 2종, 광고 예산 상한 120만 원입니다. 이견은 재고·반품 리스크로 남기고, 11/28 재고 실사 결과에 따라 할인율을 15%까지 올리는 조건을 붙였습니다. 이견과 확인 항목은 카드에 정리했습니다." },
+      { promo: true, t: "정리합니다. 결론은 12/1~12/14 13% 할인 + 사은품 선택형 2종, 광고 예산 상한 120만 원입니다. 이견은 재고·반품 리스크로 남기고, 11/28 재고 실사 결과에 따라 할인율을 15%까지 올리는 조건을 붙였습니다. 이견과 확인 항목은 카드에 정리했습니다." },
       { promo: true, t: "토론요약으로 마무리합니다. 할인은 13%, 사은품은 선택형 2종, 광고 예산 상한은 120만 원입니다. 확인 필요 항목은 11/28 재고 실사와 반품률이고, 결과에 따라 15%까지 열어 둡니다. 남은 이견은 카드에 정리했습니다." },
-      { promo: true, t: "오늘 결정은 12/1~12/14 13% 할인과 선택형 사은품 2종입니다. 광고 예산은 120만 원을 넘지 않습니다. 확인할 것은 11/28 재고 실사와 반품률이며, 결과에 따라 할인율을 15%까지 올립니다." },
-      { t: "정리합니다. 방향은 중간안으로 두고, 확인이 필요한 숫자는 따로 표시했습니다. 결정과 이견만 카드에 정리했습니다." },
-      { t: "토론요약으로 마무리합니다. 방향은 절충안으로 두고, 확인 항목은 다음 단계에서 정리합니다. 결정과 이견만 카드에 정리했습니다." }
+      { promo: true, t: "오늘 결론은 12/1~12/14 13% 할인과 선택형 사은품 2종입니다. 광고 예산은 120만 원을 넘지 않습니다. 확인할 것은 11/28 재고 실사와 반품률이며, 결과에 따라 할인율을 15%까지 올립니다." },
+      { t: "정리합니다. 방향은 중간안으로 두고, 확인이 필요한 숫자는 따로 표시했습니다. 결론과 이견만 카드에 정리했습니다." },
+      { t: "토론요약으로 마무리합니다. 방향은 절충안으로 두고, 확인 항목은 다음 단계에서 정리합니다. 결론과 이견만 카드에 정리했습니다." }
     ],
     generic: [
-      { t: "정리합니다. 방향은 중간안으로 두고, 확인이 필요한 숫자는 따로 표시했습니다. 결정과 이견만 카드에 정리했습니다." },
-      { t: "토론요약으로 마무리합니다. 방향은 절충안으로 두고, 확인 항목은 다음 단계에서 정리합니다. 결정과 이견만 카드에 정리했습니다." }
+      { t: "정리합니다. 방향은 중간안으로 두고, 확인이 필요한 숫자는 따로 표시했습니다. 결론과 이견만 카드에 정리했습니다." },
+      { t: "토론요약으로 마무리합니다. 방향은 절충안으로 두고, 확인 항목은 다음 단계에서 정리합니다. 결론과 이견만 카드에 정리했습니다." }
     ]
   },
   chat: {
@@ -5750,7 +5783,7 @@ var DEMO_CAT = {
     ],
     converge: [
       "정리하면 둘째 날은 오전 한 곳, 오후는 숙소 근처로 두고 숙소는 역에서 도보 10분 안쪽으로 잡습니다. 예약은 이번 주 안에 마무리하죠.",
-      "결정: 2박 3일, 첫날 근교 한 곳, 둘째 날 오전 집중·오후 휴식, 숙소는 중심가. 확인 필요: 예약 마감일과 이동 시간입니다."
+      "결론: 2박 3일, 첫날 근교 한 곳, 둘째 날 오전 집중·오후 휴식, 숙소는 중심가. 확인 필요: 예약 마감일과 이동 시간입니다."
     ]
   },
   daily: {
@@ -5772,7 +5805,7 @@ var DEMO_CAT = {
     ],
     converge: [
       "정리하면 예약되는 곳 하나를 먼저 잡고, 두 번째는 근처 웨이팅 감수하는 곳으로 둡니다. 예산은 1인 기준으로 맞춰 두죠.",
-      "결정: 1순위는 예약 가능한 곳, 2순위는 웨이팅 감수, 예산은 1인 3만 원 안쪽. 확인 필요: 영업시간과 주차입니다."
+      "결론: 1순위는 예약 가능한 곳, 2순위는 웨이팅 감수, 예산은 1인 3만 원 안쪽. 확인 필요: 영업시간과 주차입니다."
     ]
   },
   counsel: {
@@ -5794,7 +5827,7 @@ var DEMO_CAT = {
     ],
     converge: [
       "정리하면 이번 주에는 내가 서운했던 지점을 세 줄로 적어 보고, 다음 주에 한 번 이야기해 보는 걸로 하죠. 결론을 미루는 게 아니라 준비하는 겁니다.",
-      "결정: 이번 주는 정리만, 다음 주에 대화. 확인 필요: 상대가 지금 어떤 상황인지입니다."
+      "결론: 이번 주는 정리만, 다음 주에 대화. 확인 필요: 상대가 지금 어떤 상황인지입니다."
     ]
   }
 };
@@ -6469,6 +6502,12 @@ function startRoundtable(opts) {
   if (run.active) { toast("이미 진행 중이에요 · 먼저 멈춰 주세요"); return; }
   var agenda = String(opts.agenda || "").trim();
   if (!agenda) { toast("토론 주제를 적어 주세요"); return; }
+  /* 재토론 — 방장이 적은 새 방향이 이번 토론의 최우선 조건이다 */
+  var rb = (opts.redebate && typeof opts.redebate === "object") ? opts.redebate : null;
+  var rbDir = rb ? String(rb.direction || "").replace(/\s+/g, " ").trim().slice(0, 300) : "";
+  if (rb && !rbDir) { toast("바꿀 방향을 한 줄이라도 적어 주세요"); return; }
+  var rbEx = rb ? (rb.excluded || []).map(function (s) { return String(s || "").replace(/\s+/g, " ").trim().slice(0, 120); })
+    .filter(function (s, i, a) { return !!s && a.indexOf(s) === i; }).slice(0, 12) : [];
   var parts = (opts.participants || r.members).filter(function (id) { return !!state.agents[id]; });
   var people = (opts.people || []).filter(function (n) { return !!n; });
   if (parts.length + people.length < 2) { toast("AI가 2명 이상이면 AI 자동토론을 켤 수 있어요 · 한 명이면 @이름으로 부르면 바로 답해요"); return; }
@@ -6479,8 +6518,9 @@ function startRoundtable(opts) {
   var mod = pickedMod || rtAutoModerator(r, parts);
   if (mod) r.moderator = mod;              /* 고른 사회자를 이 방에 기억한다 */
   r.agenda = agenda;
-  /* 안건을 방장(나)의 말풍선으로 먼저 올린다 — AI들이 그 말을 받아 토론하는 자연스러운 흐름 */
-  addUserMessage("📌 토론 안건: " + agenda);
+  /* 안건을 방장(나)의 말풍선으로 먼저 올린다 — AI들이 그 말을 받아 토론하는 자연스러운 흐름.
+     재토론이면 ‘방향 수정’을 남긴다 — 그래야 AI들도 방장이 방향을 바꿨다는 걸 보고 답한다. */
+  addUserMessage(rb ? "🔄 방장 방향 수정: " + rbDir : "📌 토론 안건: " + agenda);
   r.members = parts;
   r.rounds = clamp(Number(opts.rounds) || RT_DEFAULT_ROUNDS, 1, 10);      /* 1·3·5·10 — 최대 상한 */
   r.maxTurns = clamp(r.rounds * (parts.length + people.length), 1, 400);   /* 한 라운드 = 참여 AI 전원 1회 발언 */
@@ -6502,6 +6542,14 @@ function startRoundtable(opts) {
   run.relayPeople = people.slice();
   run.roundId = uid("rd");
   run.schedule = buildSchedule(r);
+  /* 재토론 문맥 — 새 방향 + 이미 검토해 제외된 이전 결론. 카드 요약에도 같은 문맥을 넘겨
+     새 카드가 이전 결론을 다시 적지 않게 한다(session 에 남겨 요약 호출이 읽는다). */
+  run.redebate = rb ? { direction: rbDir, excluded: rbEx } : null;
+  if (run.redebate) {
+    r.session.redebate = { direction: rbDir, excluded: rbEx.slice() };
+    /* 방향은 이미 정해졌다 — 사회자의 시작(안건 확인·질문)을 건너뛰고 바로 본본으로 */
+    run.schedule.forEach(function (s) { if (s.phase === "open") s.phase = "redirect"; });
+  }
   run.autoAt = Date.now();
   run.autoBy = String(r.hostName || nick());
   run.cpIdx = 0;
@@ -6616,7 +6664,7 @@ function finishEarly(byName) {
    8.4c 사회자 질문 → 방장 답변 대기(waiting_host) — 2026-11-22 지용 님 확정
    사회자가 “몇 개월인가요?”처럼 확인 질문을 던지면 그 자리에서 토론을 멈춘다.
    · 방장이 @멘션 없이 답을 적어 보내면 1초 뒤 다음 AI 차례로 이어 간다
-   · 45초 동안 답이 없거나 [▶ 그냥 계속하기]를 누르면 조건을 나눠서 계속한다
+   · 45초 동안 답이 없거나 [▶ 그냥 넘어가기]를 누르면 조건을 나눠서 계속한다
    · 한 번 건너뛴 토론은 다시 멈추지 않는다(무한 대기 방지)
    ========================================================= */
 var HOST_WAIT_MS = 45000;
@@ -6649,8 +6697,8 @@ function hostWaitStart(ep) {
       resolve(how);
     };
     run.waitHost = w;
-    addSystem("방장님 답변을 기다리고 있어요 · @멘션 없이 그냥 답을 적어 보내면 바로 이어가요. 45초 뒤엔 조건별로 나눠서 계속할게요.",
-      "info", [{ act: "host-resume", label: "▶ 그냥 계속하기" }]);
+    addSystem("방장님 답변을 기다리고 있어요\n(45초 무응답 시 넘어갑니다)",
+      "info", [{ act: "host-resume", label: "▶ 그냥 넘어가기" }]);
     w.timer = setTimeout(function () { w.finish("timeout"); }, HOST_WAIT_MS);
     renderAll();
   });
@@ -7223,9 +7271,9 @@ function systemFor(agent, phase) {
   /* 사회자 전용 블록 — 2026-11-22 지용 님 "사회자는 순서가 아니라 전체 토론을 잡아주고 마무리하는 역할". */
   var modBlock = !isMod ? "" :
     "\n[사회자 역할 — 너는 이 방의 진행자다]" +
-    " 다른 AI들의 말을 듣고 정리해 토론이 결정으로 끝나게 만드는 사람이다. 네 전문 역할보다 진행자 역할이 먼저다." +
+    " 다른 AI들의 말을 듣고 정리해 토론이 결론으로 끝나게 만드는 사람이다. 네 전문 역할보다 진행자 역할이 먼저다." +
     (phase === "open" ? " 시작할 때는 ① 안건 한 줄 확인 ② 지금 답을 가르는 조건 1개를 방장에게 물음표로 묻기 ③ 발언 순서 제시."
-      : run.lastRound ? " 마무리에서는 ① 결정 ② 남은 이견 ③ 다음 할 일을 3~4문장(최대 200자)으로 정리한다. 결론은 네가 낸다."
+      : run.lastRound ? " 마무리에서는 ① 결론 ② 남은 이견 ③ 다음 할 일을 3~4문장(최대 200자)으로 정리한다. 결론은 네가 낸다."
       : " 진행 중에는 지금까지 나온 의견의 공통점 1가지와 이견 1가지를 짚고, 다음에 볼 관점 하나를 던진다.");
   /* 이어받기·중복 금지 — "따로 말하는 느낌이 꼭 없게"(2026-11-22 지용 님). */
   var joinRule = isMod ? "" :
@@ -7234,7 +7282,18 @@ function systemFor(agent, phase) {
   var toneClause = toneOf(r) === "polite"
     ? "반드시 한국어 존댓말(~요/~습니다)로만 답하고, 가벼운 수다·농담·짧은 한마디에서도 반말을 쓰지 않는다. 문장 끝은 ‘~요’ 또는 ‘~습니다’로 맺고 ‘~죠/~지/~네/~군/~야’ 같은 반말·구어 종결로 끝내지 않는다."
     : "다정하고 편한 친구 말투(~했어, ~같아, ~해 보자, ~어때?)로 답하고, ‘~한다/~그렇다/~필요하다’ 같은 해라체·보고서체와 ‘~요/~습니다’ 존댓말은 쓰지 않는다.";
-  return roleBoundBlock(r, agent) + toneRuleFor(r) + "\n" + medicalRuleFor() + base + roleDirective(r, agent) + modBlock + "\n방: " + r.name + " / 안건: " + (r.agenda || "없음") +
+  /* 재토론 — 방장이 직접 고른 새 방향이 이번 토론의 최우선 조건. 이미 나온 결론은 다시 꺼내지 않는다. */
+  var reBlock = "";
+  if (run.active && run.mode === "roundtable" && run.redebate && run.redebate.direction) {
+    var reEx = (run.redebate.excluded || []).filter(Boolean).slice(0, 8);
+    reBlock = "\n[방향 재설정 — 최우선] 방장이 직전 토론요약을 보고 방향을 바꿔 다시 토론한다. 새 방향: “" + run.redebate.direction + "”. " +
+      "이번 답은 이 새 조건에 100% 맞춰야 하고, 새 방향이 말하지 않은 것을 다시 꺼내지 않는다." +
+      (reEx.length
+        ? " 아래는 이미 검토해 제외된 이전 결론이다 — 말만 바꿔 반복하지도, 같은 주제를 다시 꺼내지도 마라.\n[이미 검토해 제외된 방향 — 반복 금지] " + reEx.join(" / ")
+        : "") +
+      (phase === "redirect" ? " 안건 확인·질문·인사 없이 새 방향의 첫 제안(이름·수치)부터 바로 말하라." : "");
+  }
+  return roleBoundBlock(r, agent) + toneRuleFor(r) + "\n" + medicalRuleFor() + base + roleDirective(r, agent) + reBlock + modBlock + "\n방: " + r.name + " / 안건: " + (r.agenda || "없음") +
     "\n함께 있는 AI: " + team +
     "\n규칙: " + toneClause + " " + lengthRule + " 마크다운 제목·이모지 금지. 확인하지 않은 수치·일정·재고를 아는 것처럼 말하지 말고 ‘확인 필요’로 표시한다. 인사·추임새는 넣지 않는다. 앞사람 이름을 지목해 이어받는 것은 좋다. 자기 이름을 매번 붙이지 않는다." + joinRule +
     " 네 역할 경계(공감 담당은 감정·위로, 가성비 담당은 제품·비용, 비판 담당은 리스크)를 지키고 다른 역할의 답을 대신하지 않는다. 참여자를 부를 때는 채팅방에 보이는 닉네임으로만 부르고, 실명이나 다른 별명으로 부르지 않는다." +
@@ -7258,7 +7317,7 @@ function brevityForTurn(agent, phase) {
   var isMod = isModAgent(agent);
   /* 결론은 마무리(converge) 턴에서만 — 마지막 라운드 첫 발언에서 미리 결론 내지 않게 한다 */
   var closing = isMod && (phase === "converge" || (!!(r && run.lastRound) && !!run.isLastStep));
-  if (closing) return "사회자로서 3~4문장(한국어 최대 200자)으로 ① 결정 ② 남은 이견 ③ 다음 할 일을 또렷하게 정리하세요. 인사·추임새·번호 목록은 금지합니다.";
+  if (closing) return "사회자로서 3~4문장(한국어 최대 200자)으로 ① 결론 ② 남은 이견 ③ 다음 할 일을 또렷하게 정리하세요. 인사·추임새·번호 목록은 금지합니다.";
   if (detailAsked()) {
     return "방금 질문이 상세 설명을 요구하므로 3~4문장(한국어 150자 안팎)까지 충분히 설명해도 됩니다. 그래도 서론·추임새 없이 이름·수치·이유 중심으로 말하세요.";
   }
@@ -7278,7 +7337,7 @@ function roundRule(agent) {
       /* 마지막 라운드의 첫 사회자 발언과 맨 끝 마무리가 겹쳐 ‘결론 두 번’이 나오지 않게
          결론은 마지막 차례(isLastStep)에서만 낸다(2026-11-22 검증). */
       return run.isLastStep
-        ? " 이번이 마지막 라운드의 마지막 발언이다. 결정 1~2개·남은 이견·다음 할 일을 3~4문장으로 정리하라."
+        ? " 이번이 마지막 라운드의 마지막 발언이다. 결론 1~2개·남은 이견·다음 할 일을 3~4문장으로 정리하라."
         : " 이번이 마지막 라운드다. 결론은 마지막 마무리에서 낼 테니 지금은 지금까지 의견의 공통점과 남은 이견을 한 줄씩 짚고, 아직 안 다룬 쟁점 하나만 던져라.";
     }
     return " 이번이 마지막 라운드다. 결론은 사회자가 낸다. 새 결론·요약을 만들지 말고, 바로 앞사람이 말한 구체적인 내용을 이름으로 불러 받아들일 점 또는 반박 1가지만 보태라.";
@@ -7305,7 +7364,10 @@ function phaseInstruction(phase, r, agent) {
   var joinRule = prev
     ? "바로 앞 " + prev + " 님이 방금 한 구체적인 말을 이름으로 불러(‘" + prev + " 님이 말한 ~는 좋은데’, ‘~부분은 ~로 바꾸면’) 받아들일 점 1가지 또는 다른 각도 1가지만 보태라. 이미 나온 팁·시간·수치는 말만 바꿔 반복하지 마라."
     : "안건에 대한 의견을 1가지만 말하라.";
-  if (phase === "open") core = isMod
+  if (phase === "redirect") core = isMod
+    ? "방장이 방향을 바꿨다. 안건 확인·질문 없이, 새 방향에서 바로 첫 제안(이름·수치)을 내고 다음 순서만 한 줄로 알려라. 이미 나온 결론은 다시 말하지 마라."
+    : "방장이 방향을 바꿨다. 인사·안건 확인 없이, 새 방향에서 네 역할의 첫 제안(이름·수치)을 바로 말하라. 이미 나온 결론은 다시 말하지 마라.";
+  else if (phase === "open") core = isMod
     ? "사회자로서 ① 안건을 한 줄로 확인 ② 지금 답을 가르는 조건 1개를 방장에게 물음표로 묻기(예: ‘아이가 몇 개월인가요?’) ③ 발언 순서를 알려라."
     : "안건을 확인하고 진행할 순서를 짧게 알려라.";
   else if (phase === "opinion") core = isMod
@@ -7317,7 +7379,7 @@ function phaseInstruction(phase, r, agent) {
     : (prev ? "바로 앞 " + prev + " 님이 말한 구체적인 1가지에 이름으로 대꾸해, 받아들일 점 1가지 또는 반박 1가지만 보태라. 같은 말을 반복하지 마라."
             : "직전 발언 중 하나를 이름으로 지목해 반박하거나 보완하라. 같은 말을 반복하지 마라.");
   else if (phase === "converge") core = isMod
-    ? "사회자로서 결정(핵심 결론)·남은 이견·다음 할 일을 담아 3~4문장으로 정리하라. 누가 무슨 말을 했는지 이름으로 짚고, 숫자는 ‘제안’ 또는 ‘확인 필요’로 표시하라."
+    ? "사회자로서 결론·남은 이견·다음 할 일을 담아 3~4문장으로 정리하라. 누가 무슨 말을 했는지 이름으로 짚고, 숫자는 ‘제안’ 또는 ‘확인 필요’로 표시하라."
     : "결론·요약을 만들지 말고, 바로 앞사람 의견에 보완·반박 1가지만 보태라. 결론은 사회자가 낸다.";
   else if (phase === "chat") core = toneOf(r) === "polite"
     ? "가벼운 수다입니다. 1~2문장으로 자연스러운 존댓말(~요/~습니다)로 답하세요."
@@ -7649,7 +7711,7 @@ function buildCard(r, opts) {
       if (m.phase === "converge" || m.phase === "open") return false;
       return cardSentences(m.text).some(function (x) { return CARD_FIGURE_RE.test(x); });
     });
-    evidence.push(hadNumbers ? "결정에 적힌 숫자가 이번 대화에서 나온 근거입니다."
+    evidence.push(hadNumbers ? "결론에 적힌 숫자가 이번 대화에서 나온 근거입니다."
                              : "이번 대화에서는 확인된 수치가 따로 제시되지 않았습니다.");
     accepted.push(evidence[0]);
   }
@@ -7774,7 +7836,7 @@ function cardMarkdown(c) {
     });
     L.push("");
   }
-  block("결정", c.decisions);
+  block("결론", c.decisions);
   block("다음 할 일", c.todos);
   block("핵심 근거", c.evidence);
   block("이견 · 리스크", c.risks);
@@ -7850,7 +7912,7 @@ function cardPlain(c) {
     });
     L.push("");
   }
-  block("결정", c.decisions);
+  block("결론", c.decisions);
   block("다음 할 일", c.todos);
   block("핵심 근거", c.evidence);
   block("이견 · 리스크", c.risks);
@@ -7973,8 +8035,15 @@ async function requestAiSummary(r) {
   var token = await freshAccessToken();
   if (!token) return null;
   var sig = timeoutSignal(15000), res = null;
+  /* 재토론 카드 — 새 방향 기준으로만 정리하고, 이전 결론은 다시 적지 않게 서버에 같이 넘긴다. */
+  var payload = { room_id: r.id, phase: "summary_card", context: ctx };
+  var re = (r.session && r.session.redebate) || null;
+  if (re && re.direction) {
+    payload.redebate_direction = re.direction;
+    payload.excluded_prev = (re.excluded || []).slice(0, 10);
+  }
   try {
-    res = await postKkiriAi({ room_id: r.id, phase: "summary_card", context: ctx }, { token: token, signal: sig.signal });
+    res = await postKkiriAi(payload, { token: token, signal: sig.signal });
   } catch (e) {
     sig.done();
     return null;
@@ -8046,6 +8115,62 @@ function onCardButton() {
   generateCard({ draft: run.active }).then(function (card) {
     if (card) toast("토론요약을 만들었어요");
   }, function () {});
+}
+
+/* =========================================================
+   방향을 담아 다시 토론 — 2026-11-22 지용 님 요청
+   ---------------------------------------------------------
+   “토론요약이 마음에 들지 않아 → 다시 토론. 이때 단순히 다시 도는 게 아니라
+     방장의 의견을 담아 더 정확한 방향으로 좁힌다. 같은 소리 또 하진 말고.”
+   · 카드의 [다시 토론하기]는 방장에게만 보인다(초대받은 참가자는 누를 수 없다).
+   · 방장이 아쉬운 점·바꿀 조건을 적으면 채팅에 "🔄 방장 방향 수정: ~" 를 남기고
+   · 직전 요약의 결정·근거·이견·할 일을 ‘이미 검토해 제외된 방향’ 문맥으로 넘겨
+     같은 결론을 말만 바꿔 반복하지 않게 한다(서버 kkiri-ai 도 같은 문맥을 받는다).
+   · 사회자의 시작 질문은 건넌다 — 방향은 이미 정해졌으므로 첫 차례부터 본본으로 들어간다(phase "redirect").
+   ========================================================= */
+var redebateTarget = { cardMsgId: "" };
+function cardSaidLines(c) {
+  if (!c) return [];
+  var out = [];
+  [c.decisions, c.todos, c.evidence, c.risks, c.checks].forEach(function (arr) {
+    (arr || []).forEach(function (t) {
+      var s = String(t || "").replace(/\s+/g, " ").trim();
+      if (s && out.indexOf(s) < 0) out.push(s.slice(0, 120));
+    });
+  });
+  return out.slice(0, 12);
+}
+function openRedebate(mid) {
+  var r = activeRoom();
+  if (!r) return;
+  if (!isRoomOwner(r)) { toast("방장만 다시 토론을 시작할 수 있어요"); return; }
+  if (run.active) { toast("지금 토론이 진행 중이에요 · 먼저 멈춰 주세요"); return; }
+  var m = messageById(mid);
+  if (!m || !m.card) return;
+  if (!rtCanTalk(r)) { toast("AI가 2명 이상이면 다시 토론할 수 있어요 · 한 명이면 @이름으로 부르면 바로 답해요"); return; }
+  redebateTarget.cardMsgId = mid;
+  var ta = $("rdInput");
+  if (ta) ta.value = "";
+  openModal("redebateModal");
+  setTimeout(function () { try { if (ta) ta.focus(); } catch (e) {} }, 200);
+}
+function submitRedebate() {
+  var r = activeRoom();
+  if (!r) return;
+  if (!isRoomOwner(r)) { toast("방장만 다시 토론을 시작할 수 있어요"); return; }
+  var ta = $("rdInput");
+  var dir = String((ta && ta.value) || "").replace(/\s+/g, " ").trim();
+  if (dir.length < 2) { toast("어떤 방향으로 바꿀지 한 줄만 적어 주세요"); if (ta) ta.focus(); return; }
+  var m = messageById(redebateTarget.cardMsgId);
+  var plan = rtRoomPlan(r);
+  closeModal("redebateModal");
+  startRoundtable({
+    agenda: String(r.agenda || r.name || "").trim(),
+    participants: plan.participants, people: plan.people,
+    rounds: plan.rounds, turns: plan.turns, budget: plan.budget,
+    cap: r.discussCap || 0, moderator: r.moderator || plan.moderator,
+    redebate: { direction: dir.slice(0, 300), excluded: cardSaidLines(m && m.card) }
+  });
 }
 
 /* =========================================================
@@ -13342,7 +13467,7 @@ function mockExpertText(agent, phase) {
     ],
     planner: [
       "안건을 셋으로 나누죠. 오늘 결정할 것 1개, 확인할 것 2개, 다음 주로 넘길 것 3개입니다.",
-      "결정과 확인이 섞여 있어요. 확인은 담당과 기한을 붙여 카드로 빼고, 오늘은 결정 하나만 정합시다.",
+      "결론과 확인이 섞여 있어요. 확인은 담당과 기한을 붙여 카드로 빼고, 오늘은 결정 하나만 정합시다.",
       "순서를 정하면 빨라져요. 숫자 확인 → 문구 확정 → 실행 순으로 놓겠습니다."
     ],
     analyst: [
@@ -13444,6 +13569,11 @@ async function cloudExpertTurn(agent, phase) {
     context: ctx,
     message_id: uid("a")
   };
+  /* 재토론 — 서버도 방장의 새 방향과 이미 제외된 이전 결론을 알고 답하게 한다. */
+  if (run.active && run.mode === "roundtable" && run.redebate && run.redebate.direction) {
+    body.redebate_direction = run.redebate.direction;
+    body.excluded_prev = (run.redebate.excluded || []).slice(0, 10);
+  }
   var sig = timeoutSignal(API_TIMEOUT);
   var res, data = null;
   try {
@@ -13919,6 +14049,8 @@ function wire() {
     if (cp) { copyCard(cp.getAttribute("data-card-copy")); return; }
     var rd = e.target.closest("[data-card-redo]");
     if (rd) { redoCard(rd.getAttribute("data-card-redo")); return; }
+    var rdb = e.target.closest("[data-card-redebate]");
+    if (rdb) { openRedebate(rdb.getAttribute("data-card-redebate")); return; }
   });
 
   $("menuBtn").addEventListener("click", openSidebar);
@@ -14014,6 +14146,8 @@ function wire() {
 
   /* 라운드테이블 시작 시트 — 입력은 안건 한 칸, 나머지는 방 설정을 따른다 */
   $("rtStart").addEventListener("click", rtStart);
+  var rdStartBtn = $("rdStart");
+  if (rdStartBtn) rdStartBtn.addEventListener("click", submitRedebate);
   var rtc = $("rtTurns");
   if (rtc) rtc.addEventListener("click", function (e) {
     var b = e.target.closest("[data-rounds]");
