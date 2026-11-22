@@ -326,14 +326,22 @@
   .avatar.md{width:34px;height:34px;font-size:12.5px;border-radius:11px}
   .avatar.lg{width:44px;height:44px;font-size:16px;border-radius:13px}
   /* 채팅 말풍선 — 사람(회색) / 내 AI(민트 로봇) / 끼리맘 AI(보라 스파크) 구분 (2026-11-21) */
-  .avatar.tint-mine{background:linear-gradient(140deg,#E8FBF4,#D1FAE5);color:#047857;--c:#047857;--cf:rgba(5,150,105,.22)}
-  .avatar.tint-kkiri{background:linear-gradient(140deg,#FFEBEF,#FFE0E6);color:#C94B66;--c:#C94B66;--cf:rgba(201,75,102,.22)}
+  .avatar.tint-mine{background:linear-gradient(140deg,#E8FBF4,#D1FAE5);color:#047857;--c:#047857;--cf:rgba(5,150,105,.22);--cd:rgba(5,150,105,.30)}
+  .avatar.tint-kkiri{background:linear-gradient(140deg,#FFEBEF,#FFE0E6);color:#C94B66;--c:#C94B66;--cf:rgba(201,75,102,.22);--cd:rgba(201,75,102,.32)}
   .msg.myai .who{color:#0B7A5C}
   .msg.kkiriai .who{color:#C94B66}
   .msg.person .who{color:#4C5B67}
   .avatar.sm .ico{width:16px;height:16px}
   .avatar.md .ico{width:20px;height:20px}
   .avatar.lg .ico{width:26px;height:26px}
+  /* 2026-11-22 · 캐릭터(끼리맘 AI)는 바깥 박스(배경·테두리·그림자)를 없애고 캐릭터만 크게.
+     사람·내 AI 아바타는 그대로 박스를 둔다 — 누구와 말하는지 한눈에 구분되게. */
+  .avatar.char{background:none;box-shadow:none}
+  /* 박스가 빠져 흰 바탕에 놓이므로 몸통 면을 한 단계 진하게 — 선만 남은 아이콘처럼 보이지 않게 */
+  .avatar.char .ico{--ico-fill:var(--cd,rgba(232,106,133,.30));stroke-width:2.05}
+  .avatar.char.sm .ico{width:20px;height:20px}
+  .avatar.char.md .ico{width:26px;height:26px}
+  .avatar.char.lg .ico{width:34px;height:34px}
 
   /* ============ main ============ */
   .main{flex:1;min-width:0;display:flex;flex-direction:column;height:100vh;height:100dvh;background:#FFFCFB;position:relative}
@@ -2017,6 +2025,9 @@
   .sidebar .account-line.signed small{font-size:15.5px;font-weight:900;color:#FFF5F6;margin-top:3px}
   /* ===== 2026-11-21 · 이모지 자리 픽토그램 정렬 (전문가 카드 · 방 아이콘 · 배지 · 안내) ===== */
   .expert-card .e-ava .ico{width:19px;height:19px;--ico-fill:rgba(232,106,133,.18);color:#D05770;vertical-align:0}
+  /* 캐릭터 초대 카드도 바깥 박스 없이 — 캐릭터가 칸을 거의 꽉 채운다 (2026-11-22) */
+  .expert-card .e-ava.char{background:none}
+  .expert-card .e-ava.char .ico{width:25px;height:25px;--ico-fill:rgba(232,106,133,.30)}
   .pick.emo{width:54px;height:46px;display:inline-flex;align-items:center;justify-content:center;padding:0}
   .pick.emo .ico{width:20px;height:20px;--ico-fill:rgba(232,106,133,.18);color:#D05770;vertical-align:0;margin:0}
   .pick .ico{vertical-align:-.18em;margin-right:4px}
@@ -4020,7 +4031,7 @@ function peopleLook(name) {
   return PEOPLE_LOOKS[k];
 }
 function avatarStyle(c) {
-  return 'style="--c:' + esc(c) + ";--ct:" + hexRgba(c, .13) + ";--cf:" + hexRgba(c, .24) + '"';
+  return 'style="--c:' + esc(c) + ";--ct:" + hexRgba(c, .13) + ";--cf:" + hexRgba(c, .24) + ";--cd:" + hexRgba(c, .32) + '"';
 }
 /* 사람 아바타 — 첫 글자 대신 얼굴/동물/별 픽토그램 */
 function personAvatarHtml(name, size) {
@@ -4037,7 +4048,7 @@ function avatarHtml(id, size, tint) {
   var avIco = expertAvatarIcon(a);
   var inner = avIco ? icoHtml(avIco) : (emo ? iconForEmoji(emo, "", fb) : icoHtml(fb));
   /* tint=true 는 채팅 말풍선용 — 색을 AI 종류로 고정한다(내 AI 민트 · 끼리맘 AI 보라) */
-  var cls = "avatar " + (size || "md") + (tint ? (kkiri ? " tint-kkiri" : " tint-mine") : "");
+  var cls = "avatar " + (size || "md") + (tint ? (kkiri ? " tint-kkiri" : " tint-mine") : "") + (avIco ? " char" : "");
   var style = tint ? "" : avatarStyle(c);
   return '<span class="' + cls + '" ' + style + ' aria-hidden="true">' + inner + "</span>";
 }
@@ -8402,6 +8413,46 @@ function isPresetExpertId(exId) {
   if (!id || id === "custom") return false;
   return !!presetExpertIndex()[id];
 }
+/* 두 서비스 프리셋 전체 — 끼리와 끼리맘은 같은 DB 를 쓰므로 다른 쪽 프리셋 AI 가 내 목록에 섞여 들어온다.
+   아바타 캐릭터 맵(AV_ICON_BY_EXPERT)에는 두 서비스 프리셋 id 가 모두 있어서 이것으로 알아본다. (2026-11-22) */
+var ANY_PRESET_IDX = null;
+function anyPresetIndex() {
+  if (ANY_PRESET_IDX) return ANY_PRESET_IDX;
+  var idx = {};
+  var av = (typeof AV_ICON_BY_EXPERT !== "undefined" && AV_ICON_BY_EXPERT) || {};
+  Object.keys(av).forEach(function (k) { idx[String(k).trim()] = 1; });
+  var sets = (typeof EXPERT_SETS !== "undefined" && EXPERT_SETS) || {};
+  Object.keys(sets).forEach(function (k) {
+    (sets[k] || []).forEach(function (x) { if (x && x.id) idx[x.id] = 1; });
+  });
+  if (Object.keys(idx).length && Object.keys(sets).length) ANY_PRESET_IDX = idx;
+  return idx;
+}
+function isAnyPresetId(exId) {
+  var id = String(exId == null ? "" : exId).trim();
+  if (!id || id === "custom") return false;
+  return !!anyPresetIndex()[id];
+}
+/* 프리셋 이름 — expert id 가 비거나 옛 값으로 남아 있어도 이름만으로 프리셋을 걸러낸다.
+   끼리 27종 + 끼리맘 18종(AV_ICON_BY_NAME) + 카탈로그 이름 전부. */
+var PRESET_X_NAME_IDX = null;
+function presetExpertNameIndex() {
+  if (PRESET_X_NAME_IDX) return PRESET_X_NAME_IDX;
+  var idx = {}, any = false;
+  var av = (typeof AV_ICON_BY_NAME !== "undefined" && AV_ICON_BY_NAME) || {};
+  Object.keys(av).forEach(function (k) { idx[String(k).trim()] = 1; });
+  var sets = (typeof EXPERT_SETS !== "undefined" && EXPERT_SETS) || {};
+  Object.keys(sets).forEach(function (k) {
+    any = true;
+    (sets[k] || []).forEach(function (x) { if (x && x.name) idx[String(x.name).trim()] = 1; });
+  });
+  if (any) PRESET_X_NAME_IDX = idx;
+  return idx;
+}
+function isPresetExpertName(name) {
+  var s = String(name == null ? "" : name).trim();
+  return !!s && !!presetExpertNameIndex()[s];
+}
 /* 로컬 id 에서 프리셋 전문가 id를 꺼낸다 — ex_<preset>_<rand> 만 프리셋, 그 밖(ag_…)은 직접 만든 AI */
 function presetIdFromLocalId(lid) {
   var m = /^ex_(.+)_[a-z0-9]{1,8}$/i.exec(String(lid || ""));
@@ -8931,8 +8982,13 @@ function addMineKeyAgent() {
    이것만 띄운다. 내 API 키 AI(BYOK)·웹훅 AI·옛 기본 AI(pikri/kirini/muu/red)·프리셋 전문가는 내 AI 탭·위 카탈로그 몫이다. */
 function isCustomKkiriAI(a) {
   if (!a || a.type !== "expert") return false;
-  if (a.expert === "custom") return true;
-  return !isPresetExpertId(a.expert);
+  /* 끼리·끼리맘 프리셋 AI 는 id·이름·로컬 id 어느 쪽으로 들어와도 ‘이미 만든 AI’ 가 아니다.
+     (같은 DB 라 다른 서비스 프리셋 AI 가 내 목록에 섞여 뜨던 문제 · 2026-11-22) */
+  if (isAnyPresetId(a.expert)) return false;
+  if (isPresetExpertName(a.name)) return false;
+  var m = /^ex_(.+)_[a-z0-9]{1,8}$/i.exec(String(a.id || ""));
+  if (m && isAnyPresetId(m[1])) return false;
+  return a.expert === "custom" || !isPresetExpertId(a.expert);
 }
 function renderInviteAgents() {
   var r = activeRoom();
@@ -11157,7 +11213,7 @@ function renderExpertPicker() {
     var added = draft ? !!(findExpertAgent(ex.id) && inPool(findExpertAgent(ex.id))) : (!!inRoom[ex.id] || !!inRoom[ex.name]);
     var tail = !ownerNow ? (icoHtml("lock", "xs") + " 방장만") : (added ? (draft ? "✓ 목록에 있음 · 눌러서 빼기" : "✓ 이 방에 있음 · 눌러서 빼기") : (draft ? "+ 방에 넣기" : "+ 이 방에 추가"));
     h += '<button type="button" class="expert-card' + (added ? " added" : "") + (ownerNow ? "" : " locked") + '" data-expert="' + esc(ex.id) + '"' + (added ? ' aria-disabled="true"' : "") + '>' +
-      '<span class="e-top"><span class="e-ava" aria-hidden="true">' + expertIcoHtml(ex.id, ex.name, ex.avatar, "", "spark") + '</span>' +
+      '<span class="e-top"><span class="e-ava' + (avIconName(ex.id, ex.name) ? " char" : "") + '" aria-hidden="true">' + expertIcoHtml(ex.id, ex.name, ex.avatar, "", "spark") + '</span>' +
       '<span class="e-name"><span class="e-title"><b>' + esc(ex.name) + '</b>' + engTag(ex.config) + '</span><small>' + esc(ex.role) + '</small></span></span>' +
       '<span class="e-foot"><span class="e-add">' + tail + '</span></span></button>';
   });
