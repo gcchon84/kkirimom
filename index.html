@@ -10595,9 +10595,20 @@ async function dbInit() {
       db.client.from("kkiri_agents").select("*").order("created_at", { ascending: true })
     ]);
     if (res[0].error || res[1].error) throw new Error((res[0].error || res[1].error).message);
-    if (!dbApply(res[0].data || [], res[1].data || [], true)) throw new Error("empty");
+    /* 2026-11-22 지용 님 — 시드 ‘프로젝트방’(r_plan)을 비공개로 돌리면서 공개방이 0개가 됐다.
+       그러면 새 게스트는 서버에서 ‘오류 없는 빈 목록’을 받는데, 예전엔 공개 시드 방 1개가 늘 있어
+       dbApply 가 true 를 돌려 이 자리를 지나지 않았다. 빈 목록을 실패로 보면 연결을 버리고 로컬 데모로
+       떨어져 새로 만든 방·초대 링크가 이 브라우저에만 남는다(방 공유가 통째로 깨짐).
+       그래서 ‘오류 없이 온 빈 목록’은 ‘연결 성공 · 내 방 0개’로 본다. */
+    if (!dbApply(res[0].data || [], res[1].data || [], true)) {
+      if ((res[0].data || []).length) throw new Error("empty");   /* 방은 있는데 적용이 안 된 경우만 실패 */
+      state.rooms = [];
+      state.activeRoomId = null;
+    }
     db.ready = true;
-    if (pendingJoin) {
+    /* 빈 목록이면 해석할 방이 없다 — 초대 코드 입장은 afterSignIn 의 joinByCode(RPC)가 처리한다.
+       여기서 pendingJoin 을 내려놓지 않으므로 코드 입장은 그대로 이어진다. */
+    if (pendingJoin && state.rooms.length) {
       var target = null;
       if (pendingJoin.room) {
         state.rooms.forEach(function (r) { if (r.id === pendingJoin.room) target = r; });
