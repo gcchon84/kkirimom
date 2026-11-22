@@ -698,6 +698,10 @@
     .home-foot{display:grid;grid-template-columns:1fr 1fr;gap:8px;max-width:400px;margin:20px auto 6px;align-items:stretch}
     .home-foot .home-donate{min-height:44px;padding:8px 10px}
   }
+  /* [오픈채팅] 숨김(SHOW_OPEN_CHAT=false) — display 규칙보다 세게 감춘다 */
+  .hide-openchat{display:none !important}
+  /* 숨긴 뒤 사이드바 하단 버튼은 마지막 ‘홈 화면에 추가’가 두 칸을 쓴다(빈칸 방지) */
+  .side-foot.no-openchat>.side-install{grid-column:1 / -1}
   .home-feedback:hover{border-color:#FFD6DE;color:#C94B66;background:#FFF6F7}
   .side-feedback{border-color:#2f4352}
   .fb-lead{margin:0 0 2px;font-size:12.5px;line-height:1.6;color:#6F535D;letter-spacing:-.01em}
@@ -3278,7 +3282,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261122-2235-0ff3f8d6";
+var APP_BUILD_VER = "20261122-2323-6b15e701";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -3300,6 +3304,10 @@ if (FREE_LAUNCH_MODE) document.documentElement.classList.add("fl-free");
    서버(kkiri-ai)의 어뷰징 안전 상한(24시간 200회 · 분당 12회)은 이 스위치와 무관하게 늘 켜져 있다.
    ========================================================= */
 var GUEST_ONLY_MODE = true;
+/* 2026-11-22 지용 님 — 카카오 오픈채팅방은 방이 활성화되면 다시 보여 준다.
+   지금은 한두 명만 들어와 어중간해 보이지 않게 홈·사이드바의 [오픈채팅] 버튼을 숨긴다(코드·링크는 그대로 보존).
+   켜려면 이 값을 true 로 바꾸고 다시 배포하면 된다. */
+var SHOW_OPEN_CHAT = false;
 var AUTH_UI_ENABLED = !GUEST_ONLY_MODE;   /* 로그인·회원 UI 표시 여부 — GUEST_ONLY_MODE 의 반대값(읽기용) */
 if (GUEST_ONLY_MODE) document.documentElement.classList.add("fl-guest");
 
@@ -3800,6 +3808,7 @@ function load() {
 
 function save() {
   lastSaved = Date.now();
+  try { lastRoomTouch(); } catch (e0) {}   /* 방을 보고 있는 동안의 마지막 활동 시각 */
   try {
     localStorage.setItem(STORE_KEY, JSON.stringify({
       version: VERSION, activeRoomId: state.activeRoomId, agents: state.agents, rooms: state.rooms, pool: ensurePool()
@@ -3808,7 +3817,7 @@ function save() {
     if (!saveWarned) { saveWarned = true; toast("브라우저 저장 공간이 부족해 이번 대화는 저장되지 않아요"); }
   }
 }
-/* 마지막으로 보던 방은 저장하지 않는다(2026-11-22 지용 님) — 공식 주소로 다시 들어오면 늘 게이트부터. */
+/* 공식 주소로 다시 들어오면 3분 안에 보던 방 하나만 되살린다(위 restoreLastRoom · 서비스별 기록). */
 
 function activeRoom() {
   for (var i = 0; i < state.rooms.length; i++) {
@@ -4798,6 +4807,7 @@ function applyView() {
 }
 function goHome() {
   state.view = "home";
+  lastRoomClear();                /* 🏠·브랜드로 명시적으로 나왔다 — 루트 접속은 다시 게이트부터 */
   aiIdleClear();                  /* 방을 나가면 무응답 퇴장 시계도 멈춘다 */
   closeSidebar();
   renderHome();
@@ -6007,31 +6017,56 @@ function relayStillHere(room, name) {
    진짜로 나간 참가자는 유예가 지나면 그대로 건너뛴다. */
 var PRESENCE_GRACE_MS = 20000;      /* 접속 명단이 흔들려도 이 시간까지는 ‘있다’로 본다 */
 var presenceSeen = {};              /* 소문자 닉네임 → 마지막으로 접속 명단에서 본 시각 */
-function presenceForget() { presenceSeen = {}; }
+var presenceAbsent = {};            /* 소문자 닉네임 → 명단에서 사라진 것을 처음 확인한 시각 */
+function presenceForget() { presenceSeen = {}; presenceAbsent = {}; }
+/* 방장 복귀·소켓 재연결로 접속 채널을 다시 열 때 — 명단이 잠시 비므로
+   지난 ‘마지막으로 본 시각’만 믿고 곧바로 나간 것으로 읽지 않게 유예 시계를 지금부터 다시 돌린다(2026-11-22 지용 님 제보). */
+function presenceRebase() {
+  var now = Date.now();
+  if (!presenceSeen) presenceSeen = {};
+  Object.keys(presenceSeen).forEach(function (k) { presenceSeen[k] = now; });
+  presenceAbsent = {};
+}
 function presenceNoteSeen(names, at) {
   if (!presenceSeen) presenceSeen = {};
+  if (!presenceAbsent) presenceAbsent = {};
   var t = at || Date.now();
   (names || []).forEach(function (n) {
     var k = String(n || "").trim().toLowerCase();
-    if (k) presenceSeen[k] = t;
+    if (!k) return;
+    presenceSeen[k] = t;
+    delete presenceAbsent[k];        /* 다시 보였으니 ‘사라진 시각’은 지운다 */
   });
 }
 function presenceSeenAt(name) {
   var k = String(name || "").trim().toLowerCase();
   return (presenceSeen && presenceSeen[k]) || 0;
 }
-/* 지금 명단에 없고, 마지막으로 본 지도 유예 시간이 지났을 때만 ‘나갔다’로 본다 */
+/* 명단에서 사라진 것을 처음 확인한 시각 — 처음 물을 때부터 유예를 센다.
+   한 번도 명단에서 본 적 없는 이름(방장 복귀 직후·재연결 직후)도 즉시 ‘나갔다’로 보지 않는다. */
+function presenceAbsentSince(name, at) {
+  var k = String(name || "").trim().toLowerCase();
+  if (!presenceAbsent) presenceAbsent = {};
+  if (!presenceAbsent[k]) presenceAbsent[k] = at || Date.now();
+  return presenceAbsent[k];
+}
+/* 지금 명단에 없고, 마지막으로 본 때(없으면 사라진 것을 처음 확인한 때)로부터 유예가 지났을 때만 ‘나갔다’로 본다 */
 function relayIsGone(room, name) {
-  if (relayStillHere(room, name)) return false;
+  if (relayStillHere(room, name)) {
+    var k = String(name || "").trim().toLowerCase();
+    if (presenceAbsent) delete presenceAbsent[k];
+    return false;
+  }
   var seen = presenceSeenAt(name);
-  return !(seen && (Date.now() - seen) < PRESENCE_GRACE_MS);
+  var since = seen || presenceAbsentSince(name);
+  return (Date.now() - since) >= PRESENCE_GRACE_MS;
 }
 /* 차례 직전 확인 — 명단이 흔들렸으면 유예가 끝날 때까지 다시 본다.
    그 사이 명단에 돌아오면 방에 있는 것으로 보고 차례를 진행한다. */
 async function presenceSettle(room, name, ep) {
   if (relayStillHere(room, name)) return true;
   var seen = presenceSeenAt(name);
-  var deadline = seen ? Math.min(Date.now() + PRESENCE_GRACE_MS, seen + PRESENCE_GRACE_MS) : Date.now();
+  var deadline = (seen || presenceAbsentSince(name)) + PRESENCE_GRACE_MS;
   while (Date.now() < deadline) {
     if (ep !== run.epoch) return false;
     await sleep(500);
@@ -6592,6 +6627,7 @@ function startRoundtable(opts) {
 function finishRoundtable(ep) {
   if (ep !== run.epoch) return;
   if (run.waitHost) run.waitHost.finish("cancel");
+  lastRoomClear();                /* 토론이 끝났다 — 루트 접속은 다시 게이트부터 */
   var r = activeRoom();
   run.active = false; run.paused = false; run.typingAgent = null; run.typingSet = []; run.typingName = null; run.relayWait = null; run.cooldownLeft = 0;
   run.cap = 0; run.lastRound = false; run.isLastStep = false;
@@ -6615,6 +6651,7 @@ function endRun(reason, ep) {
   run.active = false; run.paused = false; run.typingAgent = null; run.typingSet = []; run.typingName = null; run.relayWait = null; run.cooldownLeft = 0;
   var r = activeRoom();
   if (!r) return;
+  lastRoomClear();                /* 자동·수동으로 끝난 토론 — 루트 접속은 다시 게이트부터 */
   var cap = Math.max(1, Math.round(Number(r.budget)) || 0);
   if (run.cap) cap = Math.min(cap, run.cap);
   run.cap = 0;
@@ -6863,6 +6900,7 @@ function autoAwayReturn() {
 function autoAwayEnd(opts) {
   var r = activeRoom();
   if (!r) return false;
+  lastRoomClear();                /* 3분 자리비움으로 자동 종료됐다 */
   var notify = !(opts && opts.quiet);
   run.epoch++;
   run.active = false; run.paused = false; run.typingAgent = null; run.typingSet = [];
@@ -6975,6 +7013,7 @@ function autoOnVisibility() {
   try { hidden = !!(document.hidden || document.visibilityState === "hidden"); } catch (e) {}
   if (hidden) {
     /* 잠깐 앱을 오가는 경우는 유예를 두고, 그대로 화면을 벗어나 있으면 자리 비움으로 본다 */
+    try { lastRoomTouch(); } catch (e0) {}   /* 앱을 떠난 시각을 적어 둔다 — 3분 안에 돌아오면 그 방으로 복원 */
     if (run.active && run.mode === "roundtable" && isRoomOwner(r) && !run.awayAt) autoAwayArmPending();
     return;
   }
@@ -8758,6 +8797,68 @@ function guardServiceRoom() {
   }
   return false;
 }
+/* 2026-11-22 지용 님 — 공식 주소(루트)로 다시 들어왔을 때 ‘마지막에 보던 방’ 하나를 되살린다.
+   · 서비스별로 기록을 나눈다 — 끼리 기록과 끼리맘 기록이 서로의 방을 열지 않는다.
+   · 3분(방장 자리비움 종료 기준과 같은 시간) 안에 돌아왔고 토론이 끝나지 않았으면 그 방으로 바로 복원한다.
+   · 홈(🏠)으로 명시적으로 나왔거나, 토론이 자동·수동 종료됐거나, 3분이 지났으면 기록을 지우고 게이트부터 연다. */
+var LASTROOM_IDLE_MS = 180000;      /* 마지막 활동·이탈 후 이 시간까지는 그 방을 되살린다(3분) */
+var LASTROOM_KEY = "kkiri.lastroom.v1." + (OTHER_SERVICE === "끼리" ? "kkirimom" : "kkiri");
+function lastRoomRead() {
+  try {
+    var d = JSON.parse(localStorage.getItem(LASTROOM_KEY) || "null");
+    if (!d || !d.id) return null;
+    return { id: String(d.id), at: Number(d.at) || 0 };
+  } catch (e) { return null; }
+}
+function lastRoomRemember(id, at) {
+  if (!id) return;
+  try { localStorage.setItem(LASTROOM_KEY, JSON.stringify({ id: String(id), at: Number(at) || Date.now() })); } catch (e) {}
+}
+function lastRoomClear() {
+  try { localStorage.removeItem(LASTROOM_KEY); } catch (e) {}
+}
+/* 방을 보고 있는 동안의 활동 시각 — 새 말·AI 차례·설정 저장 때마다 되감는다 */
+function lastRoomTouch() {
+  try {
+    if (!LASTROOM_KEY || state.view !== "room") return;
+    var r = activeRoom();
+    if (!r || !roomInService(r)) return;
+    lastRoomRemember(r.id, Date.now());
+  } catch (e) {}
+}
+/* 토론이 살아 있는 방인가 — 자동·수동 종료된 방은 되살리지 않는다 */
+function lastRoomAlive(r) {
+  if (!r || !roomInService(r)) return false;
+  if (String(r.status || "") === "ended") return false;
+  if (r.auto && typeof r.auto === "object" && r.auto.on && r.auto.st === "end") return false;
+  return true;
+}
+var lastRoomRestoredId = "";        /* 이번에 복원해 연 방 — 서버 목록에 없으면 게이트로 되돌린다 */
+/* 루트 접속 — 마지막에 보던 그 방이 아직 살아 있고 3분 안이면 그 방을 연다 */
+function restoreLastRoom() {
+  var rec = lastRoomRead();
+  if (!rec) return false;
+  var r = null;
+  (state.rooms || []).forEach(function (x) { if (x && String(x.id) === rec.id) r = x; });
+  var fresh = rec.at && (Date.now() - rec.at) <= LASTROOM_IDLE_MS;
+  if (!r || !lastRoomAlive(r) || !fresh) { lastRoomClear(); return false; }
+  state.activeRoomId = r.id;
+  state.view = "room";
+  lastRoomRestoredId = r.remote ? String(r.id) : "";
+  return true;
+}
+/* 복원해 연 방이 서버 목록에 없으면(세션이 새로 만들어졌거나 방이 지워졌다) 게이트로 되돌린다 */
+function lastRoomRestoreFallback() {
+  if (!lastRoomRestoredId) return false;
+  lastRoomRestoredId = "";
+  lastRoomClear();
+  state.activeRoomId = null;
+  state.view = "home";
+  entryGate = true;
+  try { renderAll(); } catch (e) {}
+  return true;
+}
+
 /* 다른 서비스의 초대 링크 — 그 방을 열지 않고 게이트(시작하기)로 돌려보낸다. */
 function blockForeignJoin(room) {
   if (!room || roomInService(room)) return false;
@@ -9243,6 +9344,8 @@ function roomAskRemove(r) {
   });
 }
 function afterRoomRemoved(r, wasOwner, quiet) {
+  var lrec = lastRoomRead();
+  if (lrec && String(lrec.id) === String(r.id)) lastRoomClear();   /* 보던 방이 지워졌다 */
   state.rooms = state.rooms.filter(function (x) { return x.id !== r.id; });
   if (state.activeRoomId === r.id) {
     var nextRoom = firstServiceRoom();
@@ -9410,7 +9513,7 @@ function focusPrompt() {
       : "· 답변은 다정하고 편한 친구 말투(~했어, ~같아, ~해 보자, ~어때?)로만 해 줘. ‘~한다/~그렇다’ 같은 딱딱한 해라체나 존댓말(~요/~습니다)은 쓰지 마.\n") +
     "· 들어갈 때 짧은 인사 한 줄만 남기고, 이후엔 @네AI이름(방에서 바꾼 네 AI 이름) 이나 @AI전원 으로 부르면 바로 답하고, 방에서 사람(예: " + who + ")이 새 말을 올릴 때는 물음표가 없어도 자연스럽게 답해 줘. 네 이름이 불리기만 기다리지는 마.\n" +
     "· 긴 검색·조사는 생략하고, 10초 안팎 간격으로 새 글을 확인해 바로 핵심 2문장만 답해 줘.\n" +
-    "· AI 자동토론 중이 아니면 다른 AI 말에만 연달아 이어 말하지는 마. 사람 말에는 답해 줘.\n" +
+    "· 방에 '@네AI이름 님 차례'가 뜨거나 AI 자동토론 중일 때는 앞사람이 다른 AI여도 망설이지 말고 바로 2문장으로 답해 줘. 자동토론 중이 아닐 때만 다른 AI 말에 연달아 답하지 말고 사람 말에 답해 줘.\n" +
     "· 대화가 오가는 동안은 중간에 나가지 말고 끝까지 함께해 줘. 마지막 대화 이후 " + m + "분 동안 아무 말이 없을 때만 자동으로 나와도 돼.\n" +
     "방 링크: " + aiInviteLink(r);
 }
@@ -10349,9 +10452,16 @@ function dbApply(roomRows, agentRows, fresh) {
       auto: (s.auto && typeof s.auto === "object" && s.auto.on) ? s.auto : null
     });
   });
-  if (!roomRows.length) return false;
+  if (!roomRows.length) { lastRoomRestoreFallback(); return false; }
   state.rooms = rooms;
   sortRoomsNewest();
+  /* 복원해 연 방이 서버 목록에 없으면 게이트로 — 있으면 복원 표시를 내린다 */
+  if (lastRoomRestoredId) {
+    var restoredHere = false;
+    rooms.forEach(function (x) { if (x && String(x.id) === lastRoomRestoredId) restoredHere = true; });
+    lastRoomRestoredId = "";
+    if (!restoredHere) { lastRoomRestoreFallback(); return true; }
+  }
   /* 목록 밖(다른 서비스) 방은 고르지 않는다 — 이 서비스 방이 0개면 null(홈·게이트)로 둔다 */
   settleActiveRoomId();
   return true;
@@ -10428,7 +10538,7 @@ function presenceLeave() {
   presence.known = null;
   presence.ready = false;
   presence.since = null;
-  presenceForget();                 /* 방이 바뀌면 이전 방의 접속 이력은 버린다 */
+  presenceRebase();                 /* 채널을 다시 열 때 명단이 비는 찰나 — 유예 시계를 지금부터 다시 센다 */
   if (presence.initTimer) { clearTimeout(presence.initTimer); presence.initTimer = null; }
   if (!ch) return;
   try { ch.untrack(); } catch (e) {}
@@ -13673,7 +13783,25 @@ function waitLabel() { return GUEST_ONLY_MODE ? "연결 중" : "로그인하면 
 
 /* 무로그인 게스트 모드 — 로그인·회원 UI 를 화면에서 감춘다.
    마크업·코드는 그대로 두고 숨기기만 한다(스위치를 끄면 원래 화면이 그대로 돌아온다). */
+/* 오픈채팅 버튼 표시/숨김 — SHOW_OPEN_CHAT 하나로 홈·사이드바를 같이 끄고 켠다.
+   숨길 때는 하단 버튼 줄이 비어 보이지 않게 남은 버튼이 두 칸을 쓰도록 클래스를 붙인다(2026-11-22 지용 님). */
+function applyOpenChatSwitch() {
+  var show = !!SHOW_OPEN_CHAT;
+  ["sideOpenchatBtn", "homeOpenchatBtn"].forEach(function (id) {
+    var el = $(id);
+    if (!el) return;
+    el.classList.toggle("hide-openchat", !show);
+    el.hidden = !show;
+    if (show) el.removeAttribute("aria-hidden");
+    else el.setAttribute("aria-hidden", "true");
+  });
+  var sf = document.querySelector(".side-foot");
+  if (sf) sf.classList.toggle("no-openchat", !show);
+  var hf = $("homeFoot");
+  if (hf) hf.classList.toggle("no-openchat", !show);
+}
 function applyGuestOnlyUI() {
+  applyOpenChatSwitch();          /* 오픈채팅 버튼은 무로그인 모드와 상관없이 이 스위치로만 보인다 */
   if (!GUEST_ONLY_MODE) return;
   var hide = function (el) { if (el) el.hidden = true; };
   hide($("accountLine"));       /* 사이드바 로그인·회원가입·로그아웃 카드 */
@@ -14740,6 +14868,9 @@ if (MOCK && (!bootedLocal || !state.rooms.length)) {
 state.view = pendingJoin ? "room" : "home";
 entryGate = !pendingJoin;
 if (pendingJoin) state.activeRoomId = null;   /* 서버에서 초대 방을 확인할 때까지는 아무 방도 열지 않는다 */
+/* 공식 주소(루트)로 다시 왔을 때 — 3분 안에 보던 그 방이 아직 살아 있으면 그 방으로 바로 복원한다.
+   그 밖에는 예전처럼 게이트(시작하기)부터. */
+else if (restoreLastRoom()) { entryGate = false; }
 else settleActiveRoom();                      /* 목록 밖(다른 서비스) 방이 저장돼 있으면 첫 방이나 홈으로 */
 ensurePool();
 renderSwatches();
@@ -14771,6 +14902,7 @@ if (typeof document !== "undefined" && document.addEventListener) {
   document.addEventListener("visibilitychange", function () { try { appUpdOnShow(); } catch (e) {} });
 }
 window.addEventListener("pagehide", function () {
+  try { lastRoomTouch(); } catch (e0) {}   /* 창을 닫거나 앱을 떠난 시각 — 3분 안이면 돌아왔을 때 그 방을 연다 */
   try { if (run.active && run.mode === "roundtable" && isRoomOwner(activeRoom())) autoAwayStart(); } catch (e) {}
 });
 window.addEventListener("pageshow", function () {
