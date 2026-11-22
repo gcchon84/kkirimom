@@ -2530,6 +2530,8 @@ window.__KKIRI_BOOT = (function () {
     <symbol id="i-av-chef" viewBox="0 0 24 24"><path style="fill:var(--ico-fill,#FFE3E8)" d="M12 3.7a7.95 7.95 0 0 1 7.95 7.95c0 4.45-3.56 7.45-7.95 7.45S4.05 16.1 4.05 11.65A7.95 7.95 0 0 1 12 3.7z"/><path d="M12 3.7a7.95 7.95 0 0 1 7.95 7.95c0 4.45-3.56 7.45-7.95 7.45S4.05 16.1 4.05 11.65A7.95 7.95 0 0 1 12 3.7z"/><circle style="fill:currentColor;stroke:none" cx="9.8" cy="10.1" r="1.45"/><circle style="fill:currentColor;stroke:none" cx="14.2" cy="10.1" r="1.45"/><circle style="fill:#fff" cx="9.6" cy="3.1" r="1.9"/><circle style="fill:#fff" cx="12.3" cy="2.5" r="2.15"/><circle style="fill:#fff" cx="14.9" cy="3.1" r="1.9"/><path style="fill:#fff" d="M8.7 5.7c0-1.3 1.6-2.4 3.6-2.4s3.6 1.1 3.6 2.4z"/></symbol>
     <symbol id="i-av-camera" viewBox="0 0 24 24"><path style="fill:var(--ico-fill,#FFE3E8)" d="M12 3.7a7.95 7.95 0 0 1 7.95 7.95c0 4.45-3.56 7.45-7.95 7.45S4.05 16.1 4.05 11.65A7.95 7.95 0 0 1 12 3.7z"/><path d="M12 3.7a7.95 7.95 0 0 1 7.95 7.95c0 4.45-3.56 7.45-7.95 7.45S4.05 16.1 4.05 11.65A7.95 7.95 0 0 1 12 3.7z"/><circle style="fill:currentColor;stroke:none" cx="9.8" cy="10.1" r="1.45"/><circle style="fill:currentColor;stroke:none" cx="14.2" cy="10.1" r="1.45"/><path style="fill:#fff" d="M10.4 13.3h5.4a1.6 1.6 0 0 1 1.6 1.6v2.4a1.6 1.6 0 0 1-1.6 1.6h-5.4a1.6 1.6 0 0 1-1.6-1.6v-2.4a1.6 1.6 0 0 1 1.6-1.6z"/><path d="M11.8 13.3v-1.3h2.7v1.3"/><circle style="fill:currentColor;stroke:none" cx="13.1" cy="16.1" r="1.45"/></symbol>
     <symbol id="i-av-moon" viewBox="0 0 24 24"><path style="fill:var(--ico-fill,#FFE3E8)" d="M12 3.7a7.95 7.95 0 0 1 7.95 7.95c0 4.45-3.56 7.45-7.95 7.45S4.05 16.1 4.05 11.65A7.95 7.95 0 0 1 12 3.7z"/><path d="M12 3.7a7.95 7.95 0 0 1 7.95 7.95c0 4.45-3.56 7.45-7.95 7.45S4.05 16.1 4.05 11.65A7.95 7.95 0 0 1 12 3.7z"/><circle style="fill:currentColor;stroke:none" cx="9.8" cy="10.1" r="1.45"/><circle style="fill:currentColor;stroke:none" cx="14.2" cy="10.1" r="1.45"/><path style="fill:#fff" d="M15.6 12.6a4 4 0 1 0 0 5.9 4.8 4.8 0 0 1 0-5.9z"/></symbol>
+    <!-- 직접 만들기 — 커스텀 끼리맘 AI 전용 캐릭터(동글 몸통 + •• 눈 + 마법봉, 봉 끝에 반짝이) -->
+    <symbol id="i-av-custom" viewBox="0 0 24 24"><path style="fill:var(--ico-fill,#FFE3E8)" d="M12 3.7a7.95 7.95 0 0 1 7.95 7.95c0 4.45-3.56 7.45-7.95 7.45S4.05 16.1 4.05 11.65A7.95 7.95 0 0 1 12 3.7z"/><path d="M12 3.7a7.95 7.95 0 0 1 7.95 7.95c0 4.45-3.56 7.45-7.95 7.45S4.05 16.1 4.05 11.65A7.95 7.95 0 0 1 12 3.7z"/><circle style="fill:currentColor;stroke:none" cx="9.8" cy="10.1" r="1.45"/><circle style="fill:currentColor;stroke:none" cx="14.2" cy="10.1" r="1.45"/><path style="fill:#fff" d="M13.9 18.3l.5-2.7 4.2-4.2 2.2 2.2-4.2 4.2z"/><path d="M17.3 10.3l2.2 2.2"/><path style="fill:#fff" d="M20.4 8.4l.55 1.45 1.45.55-1.45.55-.55 1.45-.55-1.45-1.45-.55 1.45-.55z"/></symbol>
   <!-- AV_AVATAR_ICONS_END -->
   </defs>
 </svg>
@@ -3222,7 +3224,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261122-1934-a7080de3";
+var APP_BUILD_VER = "20261122-1948-b080671e";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -3385,11 +3387,51 @@ function avIconName(exId, name) {
 /* 전문가 AI 의 아바타 아이콘 — 모르는 AI(직접 만든 AI·옛 데이터)는 원래 이모지/기본값 */
 function expertAvatarIcon(a) {
   if (!a || a.type !== "expert") return "";
-  return avIconName(a.expert, a.name);
+  var k = avIconName(a.expert, a.name);
+  if (k) return k;
+  /* 직접 만든 끼리맘 AI 도 프리셋과 똑같은 ‘끼리 캐릭터’로 그린다(2026-11-22 지용 님 — 아바타 통일).
+     내 AI(BYOK·웹훅)와 사람 아바타는 type 이 달라 여기 오지 않아 박스 그대로 남는다. */
+  if (!isPresetExpertId(a.expert)) return customAvatarIcon(a);
+  return "";
 }
 function expertIcoHtml(exId, name, emoji, cls, fallback) {
   var k = avIconName(exId, name);
   return k ? icoHtml(k, cls) : iconForEmoji(emoji, cls, fallback || "spark");
+}
+/* 직접 만든 끼리맘 AI(+expert 값이 비어 있는 옛 직접 만든 AI)의 캐릭터.
+   이름·역할·설명의 낱말로 끼리 캐릭터 30종 중 어울리는 하나를 고르고, 어디에도 걸리지 않으면
+   ‘직접 만들기’ 전용(마법봉 + 반짝이) 캐릭터로 그린다. 프리셋과 같은 몸통·눈이라 나란히 있어도 이질감이 없다.
+   프리셋 이름은 위 AV_ICON_BY_NAME 이 먼저 가져가므로 여기까지 오지 않는다. */
+var AV_CUSTOM_WORDS = [
+  [["마케팅", "홍보", "광고", "캠페인", "sns", "인스타", "콘텐츠", "블로그"], "av-megaphone"],
+  [["카피", "문구", "글쓰기", "작성", "에디터", "번역", "교정"], "av-pencil"],
+  [["기획", "전략", "사업", "프로젝트", "pm", "운영", "매니저"], "av-tie"],
+  [["분석", "데이터", "통계", "리포트", "지표"], "av-glasses"],
+  [["조사", "리서치", "검색", "자료", "공부", "학습", "튜터", "교육"], "av-search"],
+  [["검증", "리스크", "안전", "보안", "법률", "계약", "점검"], "av-shield"],
+  [["여행", "코스", "동선", "숙소", "나들이", "드라이브"], "av-sunhat"],
+  [["예산", "가격", "비용", "절약", "가성비", "정산"], "av-coins"],
+  [["요리", "레시피", "식단", "음식", "맛집", "이유식", "분유"], "av-chef"],
+  [["육아", "아기", "수면", "성장", "기록", "돌봄"], "av-stroller"],
+  [["건강", "증상", "병원", "의사", "간호", "컨디션", "영양"], "av-medic"],
+  [["공감", "마음", "상담", "감정", "위로", "힐링", "고민"], "av-heart"],
+  [["아이디어", "창의", "발상", "브레인", "기획안"], "av-bulb"],
+  [["일정", "캘린더", "스케줄", "시간", "계획", "알림"], "av-calendar"],
+  [["사진", "감성", "카메라", "영상"], "av-camera"],
+  [["쇼핑", "상품", "판매", "구매", "입점", "스토어"], "av-bag"],
+  [["선물", "이벤트", "축하", "파티", "프로모션"], "av-gift"],
+  [["정리", "목록", "요약", "체크", "투두", "할일"], "av-list"],
+  [["대화", "수다", "친구", "잡담", "말동무", "소통"], "av-chat"],
+  [["응원", "습관", "루틴", "운동", "동기", "목표"], "av-star"],
+  [["휴식", "여유", "날씨", "준비"], "av-umbrella"]
+];
+function customAvatarIcon(a) {
+  var t = [a && a.name, a && a.role, a && a.desc].join(" ").toLowerCase();
+  for (var i = 0; i < AV_CUSTOM_WORDS.length; i++) {
+    var words = AV_CUSTOM_WORDS[i][0];
+    for (var j = 0; j < words.length; j++) if (t.indexOf(words[j]) > -1) return AV_CUSTOM_WORDS[i][1];
+  }
+  return "av-custom";
 }
 /* AV_AVATAR_MAP_END */
 /* 아는 이모지 → 듀오톤 SVG. 모르는 값(직접 만든 AI·옛 방)은 fallback 아이콘으로 그린다. */
