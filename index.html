@@ -8892,7 +8892,7 @@ function dbApply(roomRows, agentRows, fresh) {
     if (hidden[row.id] && !joinHit) return;
     /* 끼리 본체에서 만든 방(업무·여행·일상·고민·자유)은 끼리맘(육아) 목록에 올리지 않는다 —
        같은 DB를 쓰므로 두 서비스의 방이 한 목록에 섞이지 않게 분류로 가른다. */
-    if (!joinHit && LEGACY_ROOM_CATS[roomCategoryKey(row)]) return;
+    if (!joinHit && !KKIRIMOM_ROOM_CATS[roomCategoryKey(row)]) return;
     if (joinHit && hidden[row.id]) unhideRoomLocal(row.id);
     var s = row.settings || {};
     var p = prev[row.id];
