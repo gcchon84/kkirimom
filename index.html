@@ -536,6 +536,7 @@
   .c-sec ul{margin:0;padding-left:15px}
   .c-sec li{font-size:11.5px;line-height:1.62;color:#46323F;letter-spacing:-.012em;margin-bottom:2px;word-break:keep-all}
   .c-sec.risk h4{color:#a8691a}
+  .c-sec.todo h4{color:#9A6708}
   .c-stats{
     display:flex;gap:6px;flex-wrap:wrap;padding:9px 0 0;border-top:1px dashed #F3E3E6;margin-top:2px;
   }
@@ -962,6 +963,13 @@
   }
   .pb-chip.on{color:#C94B66;background:var(--brand-tint);border-color:#F3D0DA}
   .pb-chip.me{color:#3A2731;background:#fff;border-color:#F8D3DA;font-weight:900}
+  /* 2026-11-22 — 사회자 표시(참여 줄 칩·말풍선 이름줄). 방장 뱃지와 같은 왕관 아이콘을 작게 쓴다. */
+  .pb-chip.mod{border-color:#F3D28B;box-shadow:inset 0 0 0 1px #FBEFD2}
+  .pb-chip.mod .ico{color:#C98A16;--ico-fill:#FBEBC8}
+  .mod-tag{display:inline-flex;align-items:center;gap:2px;margin-left:2px;padding:0 4px;height:14px;
+    font-size:9px;font-weight:900;letter-spacing:-.02em;color:#9A6708;background:#FDF3DC;
+    border-radius:999px;vertical-align:middle}
+  .mod-tag .ico{color:#C98A16;--ico-fill:#FBEBC8}
   button.pb-chip{font-family:inherit;cursor:pointer}
   button.pb-chip:hover{border-color:#FFB2C1;background:var(--brand-soft)}
   button.pb-chip:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
@@ -3224,7 +3232,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261122-1948-b080671e";
+var APP_BUILD_VER = "20261122-1955-fde41917";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -3494,6 +3502,31 @@ function similarity(a, b) {
   var uni = A.length + B.length - inter;
   return uni ? inter / uni : 0;
 }
+/* 2026-11-22 지용 님 — "따로 말하는 느낌이 꼭 없게": 앞사람이 이미 낸 팁·시간·수치를
+   말만 바꿔 반복하는지 **전체 최근 AI 발언**과 비교한다(예전엔 같은 AI의 직전 발언만 0.9로 봤다).
+   글자 2-gram 유사도(Jaccard) 0.45 이상이거나, 짧은 문장에서 같은 수치가 전부 겹치면 중복. */
+function turnDuplicate(text) {
+  var r = activeRoom();
+  var t = String(text || "");
+  if (!r || t.replace(/\s+/g, "").length < 12) return false;
+  var mine = t.match(/\d+(?:[.,]\d+)?/g) || [];
+  var msgs = r.messages.filter(function (m) {
+    return m.who !== "system" && m.who !== "card" && m.who !== "user" && String(m.text || "").replace(/\s+/g, "").length >= 12;
+  }).slice(-8);
+  for (var i = 0; i < msgs.length; i++) {
+    var other = String(msgs[i].text || "");
+    var sim = similarity(t, other);
+    if (sim >= 0.45) return true;
+    if (mine.length && sim >= 0.22) {
+      var theirs = other.match(/\d+(?:[.,]\d+)?/g) || [];
+      var allIn = mine.every(function (n) { return theirs.indexOf(n) > -1; });
+      if (allIn) return true;
+    }
+  }
+  return false;
+}
+/* 중복으로 다시 부를 때 차례 지시에 붙이는 한 줄(phaseInstruction이 읽는다) */
+var dupRetryNote = "";
 
 /* =========================================================
    1. 상태 · 시드
@@ -4849,8 +4882,11 @@ function msgHtml(m) {
     (m.credits && !FREE_LAUNCH_MODE ? "<span>· " + creditsLabel(m.credits) + " 크레딧</span>" : "") +
     (m.dup ? '<span class="src demo">중복 방지</span>' : "");
   var ro = roleOf(activeRoom(), m.who);
+  /* 2026-11-22 — 사회자 말풍선에만 '사회자' 표시 */
+  var modNow = (activeRoom() && activeRoom().moderator) || run.moderator || "";
+  var isModMsg = !!(modNow && (sameName(a.name, modNow) || sameName(a.id, modNow)));
   return '<div class="msg ' + (a.type === "expert" ? "kkiriai" : "myai") + '">' + avatarHtml(m.who, null, true) + '<div class="body">' +
-    '<div class="who">' + esc(a.name) + engineBadge(m) + "<em>" + esc(ro ? ro.label : a.role) + "</em>" + srcBadge(m) + "</div>" +
+    '<div class="who">' + esc(a.name) + engineBadge(m) + (isModMsg ? '<span class="mod-tag">' + icoHtml("crown", "xs") + '사회자</span>' : "") + "<em>" + esc(ro ? ro.label : a.role) + "</em>" + srcBadge(m) + "</div>" +
     '<div class="bubble">' + fmtText(m.text) + "</div>" +
     '<div class="meta">' + meta + "</div></div></div>";
 }
@@ -4866,6 +4902,7 @@ function cardHtml(m) {
     body += '<div class="c-sec ' + cls + '"><h4>' + title + "</h4><ul>" + items + "</ul></div>";
   }
   sec("결정", c.decisions, "", function (t) { return "<li>" + esc(t) + "</li>"; });
+  sec("다음 할 일", c.todos, "todo", function (t) { return "<li>" + esc(t) + "</li>"; });
   sec("핵심 근거", c.evidence, "", function (t) { return "<li>" + esc(t) + "</li>"; });
   sec("이견 · 리스크", c.risks, "risk", function (t) { return "<li>" + esc(t) + "</li>"; });
   sec("확인 필요", c.checks, "risk", function (t) { return "<li>" + esc(t) + "</li>"; });
@@ -5303,8 +5340,10 @@ function renderPeople() {
     if (!a) return;
     /* 끼리맘 AI(크레딧)는 연보라·핑크 틴트 + 스파크, 내 AI는 민트 틴트 + 로봇 — 아이콘·색 통일 */
     var kkiri = a.type === "expert";
-    h += '<button type="button" class="pb-chip ' + (kkiri ? "kkiriai" : "myai") + '" data-ai-id="' + esc(a.id) + '" title="' + esc(a.name) + (kkiri ? (FREE_LAUNCH_MODE ? " · 끼리맘 AI · 무료" : " · 끼리맘 AI · 답변 1회당 " + configCost(a.model) + "크레딧") : " · 내 AI · 대화 무료") + (isRoomOwner(r) ? ' · 눌러서 이 방에서 빼기' : '') + '" aria-label="' + esc(a.name) + '">' +
-      '<i class="pb-dot" aria-hidden="true" style="--c:' + (kkiri ? "#F8A6B4" : "#10B981") + '"></i>' + esc(a.name) + "</button>";
+    /* 2026-11-22 — 이 방의 사회자는 칩에 왕관 + '사회자' 표시 */
+    var isModChip = !!((r.moderator && sameName(a.id, r.moderator)) || (run.moderator && sameName(a.id, run.moderator)));
+    h += '<button type="button" class="pb-chip ' + (kkiri ? "kkiriai" : "myai") + (isModChip ? " mod" : "") + '" data-ai-id="' + esc(a.id) + '" title="' + esc(a.name) + (isModChip ? " · 사회자" : "") + (kkiri ? (FREE_LAUNCH_MODE ? " · 끼리맘 AI · 무료" : " · 끼리맘 AI · 답변 1회당 " + configCost(a.model) + "크레딧") : " · 내 AI · 대화 무료") + (isRoomOwner(r) ? ' · 눌러서 이 방에서 빼기' : '') + '" aria-label="' + esc(a.name) + (isModChip ? " 사회자" : "") + '">' +
+      '<i class="pb-dot" aria-hidden="true" style="--c:' + (kkiri ? "#F8A6B4" : "#10B981") + '"></i>' + (isModChip ? icoHtml("crown", "xs") : "") + esc(a.name) + "</button>";
   });
   host.innerHTML = h;
   bar.hidden = !h;
@@ -6264,20 +6303,28 @@ async function speak(agent, phase, ep) {
     return;
   }
   var out = null, note = "", guide = routeGuide(agent, route);
-  try {
+  /* 한 차례 부르기 — 중복이면 같은 경로로 한 번 더 부르기 위해 함수로 묶는다. */
+  var takeTurn = async function () {
+    var o = null, g = routeGuide(agent, route);
     if (route === "webhook") {
-      out = await webhookTurn(agent, phase);
-      guide = null;
+      o = await webhookTurn(agent, phase);
+      g = null;
     } else if (route === "kkiri-cloud") {
-      out = await cloudExpertTurn(agent, phase);
+      o = await cloudExpertTurn(agent, phase);
     } else if (route === "kkiri-byok") {
-      out = await liveTurn(agent, liveProviderFor(agent) || api.provider, phase);
+      o = await liveTurn(agent, liveProviderFor(agent) || api.provider, phase);
     } else if (route === "kkiri-mock") {
-      out = await mockExpertTurn(agent, phase);
+      o = await mockExpertTurn(agent, phase);
     } else if (route === "local-demo") {
-      out = demoTurn(agent, phase);
-      out.src = "fallback";
+      o = demoTurn(agent, phase);
+      o.src = "fallback";
     }
+    return { out: o, guide: g };
+  };
+  try {
+    var first = await takeTurn();
+    out = first.out;
+    guide = first.guide;
   } catch (e) {
     /* 화면 전환·자리 비움으로 끊긴 턴 — 실패 안내 대신 조용히 멈추고, 돌아오면 이 차례를 다시 부른다 */
     if (e && Number(e.status) === 0 && turnScreenAway()) {
@@ -6331,20 +6378,36 @@ async function speak(agent, phase, ep) {
       if (!out.text) out.text = early ? "더 논의할 쟁점이 없어 여기서 마무리합니다."
                                       : "앞선 의견에 더 보탤 내용이 없어 이번 차례는 여기서 접겠습니다.";
     }
-    if (similarity(out.text, run.lastBy[agent.id] || "") >= 0.9) {
-      var rr = activeRoom();
-      var dtin = out.tin || estimateTin(rr);
-      var dtout = out.tout || Math.max(40, Math.round(out.text.length / 1.5));
-      var dcost = out.cost != null ? out.cost : computeCost(out.src === "openai" ? "openai" : "gemini", dtin, dtout);
-      rr.session.turn = (rr.session.turn || 0) + 1;
-      rr.session.tin = (rr.session.tin || 0) + dtin;
-      rr.session.tout = (rr.session.tout || 0) + dtout;
-      rr.session.cost = (rr.session.cost || 0) + dcost;
-      save();
-      updateMeters();
-      renderSidebar();
-      addSystem(agent.name + " 답변이 앞선 발언과 겹쳐 이번 턴을 건너뛰었어요(중복 방지).", "warn");
-      return;
+    /* 2026-11-22 지용 님 — \"말만 바꾼 중복\"을 전체 최근 발언 기준으로 잡는다.
+       걸리면 같은 경로로 한 번만 '다른 각도'를 요구해 다시 부르고, 그래도 겹치면 이번 턴은 건너뛴다. */
+    if (run.mode === "roundtable" && turnDuplicate(out.text)) {
+      var dupFirst = out;
+      var dupAgain = null;
+      dupRetryNote = "앞사람들이 이미 말한 내용과 겹쳤다. 이미 나온 팁·시간·수치를 빼고, 바로 앞사람의 구체적인 말을 이름으로 불러 받아들일 점 또는 다른 각도 1가지만 새로 말하라.";
+      try { dupAgain = await takeTurn(); } catch (e3) { dupAgain = null; }
+      dupRetryNote = "";
+      if (dupAgain && dupAgain.out && dupAgain.out.text && !turnDuplicate(dupAgain.out.text)) {
+        var rrOk = activeRoom();
+        if (rrOk && rrOk.session) {
+          rrOk.session.tin = (rrOk.session.tin || 0) + (dupFirst.tin || 0);
+          rrOk.session.tout = (rrOk.session.tout || 0) + (dupFirst.tout || 0);
+        }
+        out = dupAgain.out;
+      } else {
+        var rr = activeRoom();
+        var dtin = dupFirst.tin || estimateTin(rr);
+        var dtout = dupFirst.tout || Math.max(40, Math.round(String(dupFirst.text || "").length / 1.5));
+        var dcost = dupFirst.cost != null ? dupFirst.cost : computeCost(dupFirst.src === "openai" ? "openai" : "gemini", dtin, dtout);
+        rr.session.turn = (rr.session.turn || 0) + 1;
+        rr.session.tin = (rr.session.tin || 0) + dtin;
+        rr.session.tout = (rr.session.tout || 0) + dtout;
+        rr.session.cost = (rr.session.cost || 0) + dcost;
+        save();
+        updateMeters();
+        renderSidebar();
+        addSystem(agent.name + " 답변이 앞선 발언과 겹쳐 이번 턴을 건너뛰었어요(중복 방지).", "warn");
+        return;
+      }
     }
     /* v3: 서버가 저장한 발언(id·noSend·credits)까지 그대로 넘겨 중복 저장/중복 표시를 막는다 */
     out.src = out.src || "demo";
@@ -7021,8 +7084,16 @@ var SPECIFICITY_RULE = "구체성: ‘주변 카페’, ‘현지 맛집’, ‘
 var TONE_CASUAL_RULE = "친구말: 반드시 다정하고 편한 친구 말투(~했어, ~같아, ~해 보자, ~어때?)로만 답하세요. 절대 '~한다 / ~그렇다 / ~필요하다' 같은 딱딱한 해라체·보고서체나 존댓말(~요/~습니다)을 쓰지 마세요.";
 var TONE_POLITE_RULE = "존댓말: 반드시 자연스러운 한국어 존댓말(~요/~습니다)로만 답하세요. 어떤 상황에서도 반말을 쓰지 마세요.";
 var TONE_RULES = { casual: TONE_CASUAL_RULE, polite: TONE_POLITE_RULE };
-/* 끼리맘 공통 — 육아 조언의 안전선. 역할·말투(persona) 지시보다 이 규칙이 우선한다. */
-var MEDICAL_RULE = "안전: AI 답변은 일반 육아 참고용이며 의사의 진단·치료를 대신하지 않아요. 아기가 아프거나 응급 시에는 반드시 소아과·119에 문의해 주세요. 진단하지 않는다. 위험 신호(발열·수유 거부·처짐·호흡 이상 등)가 보이면 단정하지 말고 소아과·119를 먼저 권한다. 약 용량·접종 일정·기관 정보는 답 끝에 ‘확인 필요’로 표시한다. 이 안내 문구는 방 말투와 상관없이 그대로 전한다.";
+/* 끼리맘 공통 — 육아 조언의 안전선. 건강·의료 주제일 때만 짧은 한 줄을 넣는다. */
+var MEDICAL_RULE = "안전: 병원·약·증상 판단은 단정하지 말고 소아과·119 확인을 먼저 권하고, 용량·접종은 ‘확인 필요’로 표시한다. 이 안내는 한 줄로만, 네 역할 경계가 더 우선한다. ";
+function medicalRuleFor() {
+  var r = (typeof activeRoom === "function") ? activeRoom() : null;
+  var cat = String((r && ((r.settings && r.settings.category) || r.category)) || "").toLowerCase();
+  var txt = cat + " " + String((r && (r.agenda || r.name)) || "");
+  if (/^(health|newborn|pregnant|feeding|hospital|medical)$/.test(cat)) return MEDICAL_RULE;
+  if (/(병원|소아과|응급|발열|체온|약 |접종|증상|아파|아픈|수유|모유|분유|황달|경련|호흡)/.test(txt)) return MEDICAL_RULE;
+  return "";
+}
 
 /* 2026-11-22 지용 님 — AI 대사가 너무 방대하다: 어느 단계든 카톡처럼 짧게,
    1~2문장(60~80자 안팎) 압축. 서론·추임새 금지, 곧바로 알맹이(이름·수치·이유).
@@ -7040,13 +7111,25 @@ function systemFor(agent, phase) {
   var base = agent.prompt || (agent.type === "webhook" ? "너는 이 방의 AI 멤버다." : "너는 이 방의 AI 멤버다.");
   /* 모바일에서 한눈에 들어오게 · 2026-11-22 지용 님 — 모든 단계를 1~2문장(60~80자 안팎)으로 압축,
      상세 설명을 요청한 직후 턴만 3~4문장까지 허용한다 */
-  var lengthRule = brevityForTurn();
+  var lengthRule = brevityForTurn(agent);
+  var isMod = isModAgent(agent);
+  /* 사회자 전용 블록 — 2026-11-22 지용 님 "사회자는 순서가 아니라 전체 토론을 잡아주고 마무리하는 역할". */
+  var modBlock = !isMod ? "" :
+    "\n[사회자 역할 — 너는 이 방의 진행자다]" +
+    " 다른 AI들의 말을 듣고 정리해 토론이 결정으로 끝나게 만드는 사람이다. 네 전문 역할보다 진행자 역할이 먼저다." +
+    (phase === "open" ? " 시작할 때는 ① 안건 한 줄 확인 ② 지금 답을 가르는 조건 1개를 방장에게 물음표로 묻기 ③ 발언 순서 제시."
+      : run.lastRound ? " 마무리에서는 ① 결정 ② 남은 이견 ③ 다음 할 일을 3~4문장(최대 200자)으로 정리한다. 결론은 네가 낸다."
+      : " 진행 중에는 지금까지 나온 의견의 공통점 1가지와 이견 1가지를 짚고, 다음에 볼 관점 하나를 던진다.");
+  /* 이어받기·중복 금지 — "따로 말하는 느낌이 꼭 없게"(2026-11-22 지용 님). */
+  var joinRule = isMod ? "" :
+    " 2번째 발언자부터는 바로 앞사람(또는 직전 2명 중 1명)이 방금 한 말을 이름으로 불러(‘OO 님이 말한 ~는 좋은데’) 받아들일 점 1가지 또는 다른 각도 1가지만 보태고, 앞사람이 이미 낸 팁·시간·수치를 말만 바꿔 반복하지 않는다.";
   var toneClause = toneOf(r) === "polite"
     ? "반드시 한국어 존댓말(~요/~습니다)로만 답하고, 가벼운 수다·농담·짧은 한마디에서도 반말을 쓰지 않는다. 문장 끝은 ‘~요’ 또는 ‘~습니다’로 맺고 ‘~죠/~지/~네/~군/~야’ 같은 반말·구어 종결로 끝내지 않는다."
     : "다정하고 편한 친구 말투(~했어, ~같아, ~해 보자, ~어때?)로 답하고, ‘~한다/~그렇다/~필요하다’ 같은 해라체·보고서체와 ‘~요/~습니다’ 존댓말은 쓰지 않는다.";
-  return toneRuleFor(r) + "\n" + MEDICAL_RULE + "\n" + base + roleDirective(r, agent) + "\n방: " + r.name + " / 안건: " + (r.agenda || "없음") +
+  return toneRuleFor(r) + "\n" + medicalRuleFor() + base + roleDirective(r, agent) + modBlock + "\n방: " + r.name + " / 안건: " + (r.agenda || "없음") +
     "\n함께 있는 AI: " + team +
-    "\n규칙: " + toneClause + " " + lengthRule + " 마크다운 제목·이모지 금지. 확인하지 않은 수치·일정·재고를 아는 것처럼 말하지 말고 ‘확인 필요’로 표시한다. 다른 발언을 그대로 반복하지 않는다. 자기 이름을 매번 붙이지 않는다. 참여자를 부를 때는 채팅방에 보이는 닉네임으로만 부르고, 실명이나 다른 별명으로 부르지 않는다." +
+    "\n규칙: " + toneClause + " " + lengthRule + " 마크다운 제목·이모지 금지. 확인하지 않은 수치·일정·재고를 아는 것처럼 말하지 말고 ‘확인 필요’로 표시한다. 인사·추임새는 넣지 않는다. 앞사람 이름을 지목해 이어받는 것은 좋다. 자기 이름을 매번 붙이지 않는다." + joinRule +
+    " 네 역할 경계(공감 담당은 감정·위로, 가성비 담당은 제품·비용, 비판 담당은 리스크)를 지키고 다른 역할의 답을 대신하지 않는다. 참여자를 부를 때는 채팅방에 보이는 닉네임으로만 부르고, 실명이나 다른 별명으로 부르지 않는다." +
     roundRule(agent) +
     "\n" + SPECIFICITY_RULE.replace("1~2개 이상 콕 집어 넣어 2~3문장으로", "1가지 이상 콕 집어 넣어 1~2문장으로");
 }
@@ -7060,39 +7143,75 @@ function detailAsked() {
   var last = r.messages.filter(function (m) { return m.who !== "system" && m.who !== "card"; }).slice(-1)[0];
   return !!(last && DETAIL_ASK_RE.test(String(last.text || "")));
 }
-/* 차례 지시에 붙는 길이 규칙 — 평소 1~2문장(60~80자), 상세 요청 직후 3~4문장(150자 안팎) */
-function brevityForTurn() {
+/* 차례 지시에 붙는 길이 규칙 — 평소 1~2문장(60~80자), 상세 요청 직후 3~4문장(150자 안팎).
+   사회자(moderator)는 시작 2~3문장·마무리 3~4문장(200자)까지 (2026-11-22 지용 님). */
+function brevityForTurn(agent) {
+  var r = activeRoom();
+  var isMod = isModAgent(agent);
+  var closing = isMod && !!(r && run.lastRound);
+  if (closing) return "사회자로서 3~4문장(한국어 최대 200자)으로 ① 결정 ② 남은 이견 ③ 다음 할 일을 또렷하게 정리하세요. 인사·추임새·번호 목록은 금지합니다.";
   if (detailAsked()) {
     return "방금 질문이 상세 설명을 요구하므로 3~4문장(한국어 150자 안팎)까지 충분히 설명해도 됩니다. 그래도 서론·추임새 없이 이름·수치·이유 중심으로 말하세요.";
   }
+  if (isMod) return "사회자로서 2~3문장(한국어 최대 150자)으로 방향을 잡아 주세요. 인사·추임새는 넣지 않습니다.";
   return BREVITY_RULE;
 }
 
 /* 라운드 진행 규칙 — 1라운드는 전원 발언 보장(종결 금지), 2라운드부터는 사회자만 [종결]로 일찍 마무리할 수 있고,
-   마지막 라운드에서는 반드시 추천안 1~2개로 좁혀 마무리한다. agent는 지금 말하는 AI. */
+   마지막 라운드의 '결론'은 사회자만 낸다(2026-11-22 지용 님 — 다른 AI는 마지막에도 보완·반박만).
+   agent는 지금 말하는 AI. */
 function roundRule(agent) {
   if (!(run.active && run.mode === "roundtable")) return "";
   if (Number(run.roundNo) < 2) return " 아직 1라운드다. 절대 [종결]을 붙이지 말고 의견을 충분히 내라.";
-  if (run.lastRound) return " 이번이 마지막 라운드다. 반드시 최종 추천안 1~2개로 결론을 좁혀 마무리하라.";
-  var isMod = agent && run.moderator && sameName(agent.id, run.moderator);
+  var isMod = isModAgent(agent);
+  if (run.lastRound) {
+    return isMod
+      ? " 이번이 마지막 라운드다. 사회자로서 결정 1~2개·남은 이견·다음 할 일을 3~4문장으로 정리하라."
+      : " 이번이 마지막 라운드다. 결론은 사회자가 낸다. 새 결론·요약을 만들지 말고, 바로 앞사람이 말한 구체적인 내용을 이름으로 불러 받아들일 점 또는 반박 1가지만 보태라.";
+  }
   if (isMod) return " 지금까지 모든 참여자의 의견을 보고, 충분히 결론이 모였다고 판단될 때만 답변 끝에 [종결]을 붙이고 핵심 결론 1~2개로 좁혀 마무리하라. 아직 쟁점이 남았으면 붙이지 마라.";
   return " [종결]은 붙이지 말고, 앞선 의견에 대한 보완·반박이나 핵심 근거를 제시하라.";
 }
 
-function phaseInstruction(phase, r) {
+/* 바로 앞 발언자 이름 — '이어받기' 지시에 쓴다 */
+function lastSpeakerName(r) {
+  if (!r) return "";
+  var msgs = r.messages.filter(function (m) { return m.who !== "system" && m.who !== "card"; });
+  var last = msgs[msgs.length - 1];
+  return last ? String(agentName(last.who) || "") : "";
+}
+function isModAgent(agent) {
+  return !!(agent && run.moderator && sameName(agent.id, run.moderator));
+}
+
+function phaseInstruction(phase, r, agent) {
   var core;
-  if (phase === "open") core = "사회자로서 안건을 확인하고, 진행 순서와 목표(결정 1개·다음 할 일)를 짧게 알려라.";
-  else if (phase === "opinion") core = "안건에 대한 1차 의견을 제시하라. 앞선 발언이 있으면 읽고 다른 각도를 보태라.";
+  var isMod = isModAgent(agent);
+  var prev = lastSpeakerName(r);
+  var joinRule = prev
+    ? "바로 앞 " + prev + " 님이 방금 한 구체적인 말을 이름으로 불러(‘" + prev + " 님이 말한 ~는 좋은데’, ‘~부분은 ~로 바꾸면’) 받아들일 점 1가지 또는 다른 각도 1가지만 보태라. 이미 나온 팁·시간·수치는 말만 바꿔 반복하지 마라."
+    : "안건에 대한 의견을 1가지만 말하라.";
+  if (phase === "open") core = isMod
+    ? "사회자로서 ① 안건을 한 줄로 확인 ② 지금 답을 가르는 조건 1개를 방장에게 물음표로 묻기(예: ‘아이가 몇 개월인가요?’) ③ 발언 순서를 알려라."
+    : "안건을 확인하고 진행할 순서를 짧게 알려라.";
+  else if (phase === "opinion") core = isMod
+    ? "지금까지 나온 의견의 공통점과 이견을 한 줄로 짚고, 아직 아무도 다루지 않은 관점 1개를 던져라."
+    : joinRule;
   else if (phase === "issue") core = "지금까지 발언에서 쟁점을 두 개로 압축하고, 각 쟁점에 대한 입장을 한 줄씩 정리하라.";
-  else if (phase === "rebuttal") core = "직전 발언 중 하나를 이름으로 지목해 반박하거나 보완하라. 같은 말을 반복하지 마라.";
-  else if (phase === "converge") core = "결정·근거·이견·다음 할 일을 담아 2~3문장으로 토론요약을 만들라. 숫자는 ‘제안’ 또는 ‘확인 필요’로 표시하라.";
+  else if (phase === "rebuttal") core = isMod
+    ? "지금까지 나온 의견의 공통점과 이견을 짚고, 다음에 볼 관점 1개를 던져라."
+    : (prev ? "바로 앞 " + prev + " 님이 말한 구체적인 1가지에 이름으로 대꾸해, 받아들일 점 1가지 또는 반박 1가지만 보태라. 같은 말을 반복하지 마라."
+            : "직전 발언 중 하나를 이름으로 지목해 반박하거나 보완하라. 같은 말을 반복하지 마라.");
+  else if (phase === "converge") core = isMod
+    ? "사회자로서 결정(핵심 결론)·남은 이견·다음 할 일을 담아 3~4문장으로 정리하라. 누가 무슨 말을 했는지 이름으로 짚고, 숫자는 ‘제안’ 또는 ‘확인 필요’로 표시하라."
+    : "결론·요약을 만들지 말고, 바로 앞사람 의견에 보완·반박 1가지만 보태라. 결론은 사회자가 낸다.";
   else if (phase === "chat") core = toneOf(r) === "polite"
     ? "가벼운 수다입니다. 1~2문장으로 자연스러운 존댓말(~요/~습니다)로 답하세요."
     : "가벼운 수다입니다. 1~2문장으로 다정한 친구 말투(~했어, ~같아, ~어때?)로 답하세요.";
   else if (phase === "mention") core = "사용자가 이름을 불렀다. 짧게 답하고, 자기 몫에서 도울 일을 한 가지 제안하라.";
   else core = "안건에 맞게 짧게 발언하라.";
-  /* 2026-11-22 지용 님 — 어느 단계든 카톡처럼 짧게: 평소 1~2문장(60~80자), 상세 요청 직후 3~4문장까지 */
-  return core + " " + brevityForTurn();
+  /* 2026-11-22 지용 님 — 어느 단계든 카톡처럼 짧게. 사회자는 방향을 잡고 마무리하는 몫이다. */
+  return core + " " + brevityForTurn(agent) + (dupRetryNote ? " " + dupRetryNote : "");
 }
 
 function turnPrompt(agent, phase) {
@@ -7103,7 +7222,7 @@ function turnPrompt(agent, phase) {
   });
   var ro = roleOf(r, agent.id);
   return "[지금까지의 발언]\n" + (lines.length ? lines.join("\n") : "(없음)") +
-    "\n\n[차례] 지금은 " + agent.name + "(" + (ro ? ro.label : (agent.role || "멤버")) + ") 차례다. " + phaseInstruction(phase, r);
+    "\n\n[차례] 지금은 " + agent.name + "(" + (ro ? ro.label : (agent.role || "멤버")) + ") 차례다. " + phaseInstruction(phase, r, agent);
 }
 
 async function liveTurn(agent, provider, phase) {
@@ -7432,6 +7551,23 @@ function buildCard(r, opts) {
   });
   checkCand.forEach(function (s) { take(checks, s, 3); });
 
+  /* 5) 다음 할 일 — 2026-11-22 지용 님. 사회자 마무리(converge·사회자 발언)에서
+     ‘~해 보세요 / 확인해 보세요 / 기록해 두세요’ 같은 실행 문장을 뽑는다(없으면 일반 발언에서). */
+  var todos = [];
+  var TODO_RE = /(해 ?보|해보|확인(해|하)|기록(해|하)|점검(해|하)|시도(해|하)|문의(해|하)|예약(해|하)|물어보|체크(해|하)|정리(해|하))/;
+  function todoPool(m) {
+    return cardSentences(m.text).filter(function (s) {
+      if (isRiskOnly(s)) return false;
+      return TODO_RE.test(s);
+    });
+  }
+  var modPool = [];
+  all.forEach(function (m) {
+    if (m.phase === "converge" || isModeratorMsg(m)) todoPool(m).forEach(function (s) { modPool.push(s); });
+  });
+  if (!modPool.length) all.forEach(function (m) { if (m.phase !== "open") todoPool(m).forEach(function (s) { modPool.push(s); }); });
+  modPool.forEach(function (s) { take(todos, s, 3); });
+
   var s = r.session || freshSession();
   var turns = s.turn || all.length;
   var tokens = (s.tin || 0) + (s.tout || 0);
@@ -7453,6 +7589,7 @@ function buildCard(r, opts) {
     evidence: evidence,
     risks: risks.length ? risks : ["특별한 이견 없이 정리됐습니다. 실행 전 확인 항목만 남겼습니다."],
     checks: checks,
+    todos: todos,
     stats: {
       members: memberNames(r).concat(relayNames),
       turns: turns,
@@ -7483,6 +7620,7 @@ function cardMarkdown(c) {
     L.push("");
   }
   block("결정", c.decisions);
+  block("다음 할 일", c.todos);
   block("핵심 근거", c.evidence);
   block("이견 · 리스크", c.risks);
   block("확인 필요", c.checks);
@@ -7558,6 +7696,7 @@ function cardPlain(c) {
     L.push("");
   }
   block("결정", c.decisions);
+  block("다음 할 일", c.todos);
   block("핵심 근거", c.evidence);
   block("이견 · 리스크", c.risks);
   block("확인 필요", c.checks);
@@ -8080,6 +8219,7 @@ function rtSetMod(id) {
   });
   r.moderator = id;
   save();
+  if (isRoomOwner(r)) dbSaveSettings(r);   /* 고른 사회자를 서버에 남긴다 — 새로고침·재입장에도 유지 */
   rtRefreshSummary();
 }
 function rtAiCost() { var c = configCost("kkiri-lite"); return FREE_LAUNCH_MODE ? c : (c || 10); }
@@ -9871,6 +10011,8 @@ function dbApply(roomRows, agentRows, fresh) {
       rounds: (typeof s.rounds === "number" && s.rounds >= 1) ? clamp(Math.round(s.rounds), 1, 10)
             : (p && typeof p.rounds === "number") ? p.rounds : 3,
       budget: typeof s.budget === "number" ? clamp(Math.round(s.budget), 100, 5000) : 200,
+      /* 이 방의 사회자 — 서버 설정에서 되살린다(없으면 시작할 때 첫 AI가 사회자) */
+      moderator: typeof s.moderator === "string" ? s.moderator : "",
       members: mem, status: p ? p.status : "idle",
       aiPeople: Array.isArray(s.aiPeople) ? s.aiPeople.filter(function (n) { return typeof n === "string" && n; }).slice(0, 40) : [],
       createdAt: Date.parse(row.created_at) || Date.now(),
@@ -10736,6 +10878,8 @@ function dbSaveSettings(r) {
     kind: r.kind === "chat" ? "lounge" : "project",
     description: String(r.agenda || "").slice(0, 600),
     settings: { emoji: r.emoji, mode: "mention", roleMode: roleModeOf(r), roles: r.roles || {}, maxTurns: r.maxTurns, rounds: r.rounds, budget: r.budget, category: categoryKeyOf(r), tone: toneOf(r), aiPeople: r.aiPeople || [],
+                /* 2026-11-22 — 이 방의 사회자. 새로고침·재입장해도 사회자가 바뀌지 않게 저장한다. */
+                moderator: String(r.moderator || ""),
                 /* 방장이 켜 둔 AI 자동토론 표시 — 방장이 아닌 참여자 화면의 작은 상태 배너용 */
                 discussingAt: (run.active && run.mode === "roundtable") ? Date.now() : 0,
                 /* 자동토론 체크포인트(안건·라운드·다음 차례) — 복귀 재개와 참가자 안내에 쓴다 */
@@ -13134,11 +13278,13 @@ async function cloudExpertTurn(agent, phase) {
     expert: { id: agent.id, name: agent.name, role: ro ? ro.label : (agent.role || ""), persona: (agent.prompt || "") + roleDirective(r, agent), avatar: agent.avatar || "" },
     phase: phase || "",
     tone: toneOf(r),
-    instruction: phaseInstruction(phase, r) + roundRule(agent) + (ro ? " 너의 이 방 역할은 ‘" + ro.label + "’이다: " + ro.focus + "." : "") +
+    /* 2026-11-22 지용 님 — 이 AI가 방의 사회자인지 서버에 알린다(사회자 역할 블록·마무리 길이). */
+    moderator: isModAgent(agent),
+    instruction: phaseInstruction(phase, r, agent) + roundRule(agent) + (ro ? " 너의 이 방 역할은 ‘" + ro.label + "’이다: " + ro.focus + "." : "") +
       " " + (toneOf(r) === "polite"
         ? "반드시 한국어 존댓말(~요/~습니다)로만 답하고, 수다·농담·짧은 반응에서도 반말을 쓰지 않는다."
         : "다정하고 편한 친구 말투(~했어, ~같아, ~어때?)로 답하고, ‘~한다/~그렇다’ 같은 해라체·보고서체와 존댓말(~요/~습니다)은 쓰지 않는다.") +
-      " " + MEDICAL_RULE + " " + SPECIFICITY_RULE,
+      " " + medicalRuleFor() + SPECIFICITY_RULE,
     speakers: memberNames(r),
     context: ctx,
     message_id: uid("a")
