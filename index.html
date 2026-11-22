@@ -905,6 +905,14 @@
   .ppl-empty b{color:#6E5563}
   /* 내 AI가 답을 기다리는 동안 — 사람 말풍선 모양으로 조용히 */
   .typing.relay .bubble{color:#C94B66;font-weight:900}
+  /* 방장 [턴 넘기기] — 대기 말풍선 옆 작은 알약. 8초 넘게 답이 없을 때만 그린다. */
+  .typing .bubble .cut-turn{
+    border:1px solid #F5D6DC;background:#fff;color:#C94B66;border-radius:999px;
+    font-size:10.5px;font-weight:900;padding:4px 9px;margin-left:2px;cursor:pointer;
+    letter-spacing:-.01em;white-space:nowrap;flex:0 0 auto;
+  }
+  .typing .bubble .cut-turn:hover{background:var(--brand-tint)}
+  .typing .bubble{flex-wrap:wrap}
   .pb-chip.relay{color:#C94B66;background:var(--brand-tint);border-color:#F3D0DA}
   .toast{
     position:fixed;left:50%;bottom:24px;transform:translate(-50%,14px);z-index:90;
@@ -3293,7 +3301,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261123-0003-47a267f8";
+var APP_BUILD_VER = "20261123-0013-b640979d";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -3958,6 +3966,7 @@ var run = {
   schedule: [], idx: 0, freeConsec: 0, lastSpeaker: null,
   lastBy: {}, lastAt: {}, lastGlobalAt: 0, recent: [], moderator: null, mode: null,
   relayPeople: [], typingName: null, relayWait: null, relayMs: RELAY_WAIT_MS   /* 내 AI 응답을 기다리는 시간(30초) */,
+  cutWait: null, cutTimer: null,   /* 방장 [턴 넘기기] — 응답이 8초 넘게 없을 때만 버튼을 띄운다 */
   awayAt: 0, awayPausedBefore: false, awayTimer: null, awayPending: 0, awayPendingTimer: null,
   autoAt: 0, autoBy: "", cpIdx: 0, cpAt: 0, resumeFrom: 0
 };
@@ -5051,9 +5060,32 @@ function msgHtml(m) {
     '<div class="meta">' + meta + "</div></div></div>";
 }
 
+/* 예전에 규칙 카드가 맹탕 문구로 저장된 카드(localStorage·DB)도 화면에서 바로 고친다.
+   - 맹탕 문구 3종을 걷어 내고,
+   - 비어 버린 칸은 같은 방의 실제 발언에서 다시 뽑아 채운다(뽑을 게 없으면 칸을 숨긴다).
+   DB(다른 참가자 화면)는 그대로지만, 이 기기에서는 옛 카드도 바로 쓸 만해진다. */
+function healCard(c, room) {
+  if (!c || !room) return;
+  var dirty = false;
+  [c.decisions, c.evidence, c.risks, c.todos, c.checks].forEach(function (arr) {
+    if (!arr || !arr.length) return;
+    for (var i = arr.length - 1; i >= 0; i--) {
+      if (CARD_BANNED_RE.test(String(arr[i]))) { arr.splice(i, 1); dirty = true; }
+    }
+  });
+  if (!dirty || c.aiSummary || c.healed) return;
+  c.healed = 1;
+  try {
+    var fresh = buildCard(room, {});
+    if (!c.decisions || !c.decisions.length) c.decisions = fresh.decisions || [];
+    if (!c.evidence || !c.evidence.length) c.evidence = fresh.evidence || [];
+    if (!c.risks || !c.risks.length) c.risks = fresh.risks || [];
+  } catch (e) {}
+}
 function cardHtml(m) {
   var c = m.card;
   if (!c) return "";
+  healCard(c, activeRoom());
   var body = "";
   function sec(title, list, cls, render) {
     if (!list || !list.length) return;
@@ -5073,6 +5105,11 @@ function cardHtml(m) {
     "<span>" + esc(c.stats.duration) + "</span></div>";
   /* 방향을 담아 다시 토론 — 방장에게만 보인다. 아쉬운 점을 적으면 같은 결론을 빼고 새 방향으로만 다시 돈다. */
   var rr = activeRoom();
+  /* AI 요약 없이 규칙으로만 만들어진 카드(맹탕 문구 사건 이후) — 방장이면 AI 요약을 다시 시도할 수 있다. */
+  var redoBtn = (rr && isRoomOwner(rr) && !c.aiSummary && !c.draft)
+    ? '<button type="button" data-card-redo="' + esc(m.id) + '" title="서버 AI 요약으로 카드를 다시 써요">' +
+      icoHtml("redo", "sm") + ' 요약 다시 쓰기</button>'
+    : "";
   var reBtn = (rr && isRoomOwner(rr))
     ? '<button type="button" class="redebate" data-card-redebate="' + esc(m.id) + '" title="아쉬운 점·바꿀 조건을 적어 새 방향으로 다시 토론해요">' +
       icoHtml("redo", "sm") + ' 다시 토론하기</button>'
@@ -5085,6 +5122,7 @@ function cardHtml(m) {
     '<button type="button" data-card-mail="' + esc(m.id) + '">' + icoHtml("mail", "sm") + ' 이메일로 보내기</button>' +
     '<button type="button" data-card-txt="' + esc(m.id) + '">' + icoHtml("download", "sm") + ' 파일 저장 (.txt)</button>' +
     '<button type="button" data-card-copy="' + esc(m.id) + '">' + icoHtml("copy", "sm") + ' 전체 복사</button>' +
+    redoBtn +
     reBtn +
     "</div></div>";
 }
@@ -5099,12 +5137,62 @@ function typingHtml(id) {
   var a = state.agents[id];
   if (!a) return "";
   return '<div class="typing">' + avatarHtml(id) +
-    '<div class="bubble">' + esc(a.name) + ' 답장 작성 중<span class="dots"><i></i><i></i><i></i></span></div></div>';
+    '<div class="bubble">' + esc(a.name) + ' 답장 작성 중<span class="dots"><i></i><i></i><i></i></span>' +
+    cutBtnHtml("ai", id) + '</div></div>';
 }
 /* 내 AI 차례 — 호명을 올리고 답을 기다리는 동안 보여 준다 */
 function relayTypingHtml(name) {
   return '<div class="typing relay">' + (isExtAiName(name) ? extAiAvatarHtml(name) : personAvatarHtml(name)) +
-    '<div class="bubble">' + esc(name) + ' 답을 기다리는 중<span class="dots"><i></i><i></i><i></i></span></div></div>';
+    '<div class="bubble">' + esc(name) + ' 답을 기다리는 중<span class="dots"><i></i><i></i><i></i></span>' +
+    cutBtnHtml("relay", name) + '</div></div>';
+}
+
+/* ============ 방장 [턴 넘기기] — 2026-11-22 지용 님 요청 ============
+   “AI 답변이 너무 느릴 때 답답하다. 누구누구 답변 기다리는 중 뜰 때 옆에 턴 넘기기처럼.”
+   · 자동토론 중 방장에게만, 응답이 CUT_SHOW_MS(8초) 넘게 없을 때만 버튼이 나타난다
+     (8초 안에 답이 오면 화면에 흔적을 남기지 않는다 — 지용 님 확정).
+   · 누르면 외부 AI 60초·내 AI 30초 타이머를 기다리지 않고 그 차례를 즉시 끝내고 다음 차례로 간다.
+   · 화면에는 “방장이 ‘○○’ 님 차례를 넘겼어요” 한 줄만 남는다.
+   ================================================================ */
+var CUT_SHOW_MS = 8000;
+function cutEligible() {
+  var r = activeRoom();
+  return !!(r && run.active && run.mode === "roundtable" && !run.paused && isRoomOwner(r));
+}
+function cutBegin(kind, key, nick) {
+  var c = { kind: kind, key: String(key == null ? "" : key), nick: nick, cut: false, ready: false };
+  c.promise = new Promise(function (resolve) { c.fire = resolve; });
+  if (!cutEligible()) return c;
+  run.cutWait = c;
+  if (run.cutTimer) { clearTimeout(run.cutTimer); run.cutTimer = null; }
+  run.cutTimer = setTimeout(function () {
+    run.cutTimer = null;
+    if (run.cutWait !== c || c.cut) return;
+    c.ready = true;
+    try { renderTimeline(false); } catch (e) {}
+  }, CUT_SHOW_MS);
+  return c;
+}
+function cutEnd(c) {
+  if (!c) return;
+  if (run.cutTimer && run.cutWait === c) { clearTimeout(run.cutTimer); run.cutTimer = null; }
+  if (run.cutWait === c) run.cutWait = null;
+  c.ready = false;
+}
+function cutBtnHtml(kind, key) {
+  if (!run.active || run.mode !== "roundtable") return "";
+  var c = run.cutWait;
+  if (!c || !c.ready || c.cut || c.kind !== kind || c.key !== String(key == null ? "" : key)) return "";
+  return '<button type="button" class="cut-turn" data-cut-turn="1">턴 넘기기</button>';
+}
+function hostCutTurn() {
+  var c = run.cutWait;
+  if (!c || c.cut) return;
+  if (!cutEligible()) { toast("방장만 차례를 넘길 수 있어요"); return; }
+  c.cut = true; c.ready = false;
+  if (run.cutTimer) { clearTimeout(run.cutTimer); run.cutTimer = null; }
+  addSystem("방장이 ‘" + c.nick + "’ 님 차례를 넘겼어요", "info");
+  try { c.fire(); } catch (e) {}
 }
 
 function hasRealMessages(r) {
@@ -6235,10 +6323,19 @@ async function relayTurn(step, ep) {
   var waitMs = presenceAiFlag(step.nick) ? RELAY_WAIT_EXTERNAL_MS : RELAY_WAIT_MS;
   var turnStart = Date.now();
   addSystem("@" + step.nick + " 님 차례 (" + roundNo + "/" + total + "라운드)", "turn");
-  var reply = await waitRelayReply(step.nick, known, ep, waitMs);
+  /* 방장 [턴 넘기기] — 8초 넘게 답이 없으면 대기 말풍선 옆에 버튼이 뜨고,
+     누르면 60초 타이머를 기다리지 않고 이 차례를 바로 끝낸다. */
+  var cut = cutBegin("relay", step.nick, step.nick);
+  var reply = await Promise.race([
+    waitRelayReply(step.nick, known, ep, waitMs, cut),
+    cut.promise.then(function () { return null; })
+  ]);
+  var cutHit = !!cut.cut;
+  cutEnd(cut);
   run.typingName = null;
   run.relayWait = null;
   if (ep !== run.epoch) return;
+  if (cutHit) { renderTimeline(true); updateMeters(); return; }
   /* 60초 타이머가 끝나는 바로 그 무렵에 답변이 방·서버에 도착하는 경우가 있었다
      (2026-11-22 지용 님 제보: 3/3 라운드 답변을 올린 직후 ‘응답이 없어…’ 오탐).
      이미 그 차례의 답이 있으면 ‘응답 없음’ 안내를 띄우지 않고 정상 진행한다. */
@@ -6275,12 +6372,13 @@ async function relayTurn(step, ep) {
   return "";
 }
 /* 그 이름의 새 말이 올라올 때까지 기다린다 — 일시정지 중에는 시간을 세지 않는다. */
-function waitRelayReply(name, known, ep, ms) {
+function waitRelayReply(name, known, ep, ms, cut) {
   return new Promise(function (resolve) {
     var left = Math.max(1000, Number(ms) || RELAY_WAIT_MS);
     var last = Date.now();
     (function tick() {
       if (ep !== run.epoch) return resolve(null);
+      if (cut && (cut.cut || (run.cutWait && run.cutWait !== cut))) return resolve(null);   /* 방장이 차례를 넘겼다 */
       var r = activeRoom();
       if (!r) return resolve(null);
       var hit = null;
@@ -6520,13 +6618,29 @@ async function speak(agent, phase, ep) {
     }
     return { out: o, guide: g };
   };
+  /* 방장 [턴 넘기기] — 서버 AI 답이 8초 넘게 없으면 ‘답장 작성 중’ 옆에 버튼이 뜬다.
+     누르면 그 요청 결과는 버리고(백그라운드 응답은 무시) 바로 다음 차례로 간다. */
+  var cut = cutBegin("ai", agent.id, agent.name);
   try {
-    var first = await takeTurn();
+    var raced = await Promise.race([
+      takeTurn().then(function (v) { return { v: v }; }, function (e2) { return { e: e2 }; }),
+      cut.promise.then(function () { return { cut: true }; })
+    ]);
+    if (raced && raced.cut) {
+      cutEnd(cut);
+      typingStop(agent.id);
+      renderTimeline(true);
+      updateMeters();
+      return;
+    }
+    if (raced && raced.e) throw raced.e;
+    var first = raced.v;
     out = first.out;
     guide = first.guide;
   } catch (e) {
     /* 화면 전환·자리 비움으로 끊긴 턴 — 실패 안내 대신 조용히 멈추고, 돌아오면 이 차례를 다시 부른다 */
     if (e && Number(e.status) === 0 && turnScreenAway()) {
+      cutEnd(cut);
       typingStop(agent.id);
       turnRetryQueue(agent.id, phase);
       renderTimeline(true);
@@ -6549,6 +6663,7 @@ async function speak(agent, phase, ep) {
       };
     }
   }
+  cutEnd(cut);
   if (ep !== run.epoch) { typingStop(agent.id); renderTimeline(true); return; }
   typingStop(agent.id);
   if (out && out.skip) {                 /* v3: 크레딧 부족·로그인 필요 → 데모로 대신하지 않고 건너뜀 */
@@ -7684,7 +7799,16 @@ var CARD_ORD_RE = /^(?:(?:첫째|둘째|셋째|넷째|첫 ?번째|두 ?번째|�
 /* 앞뒤 맥락 없이 문장 첫머리에 남은 접속사 — 카드에서는 떼어 낸다 */
 var CARD_CONN_RE = /^(?:하지만|그런데|다만|따라서|그래서|그러나|그러면|즉|결국|또한|그리고|반면|왜냐하면|아무튼|우선|참고로)(?:\s*,\s*|\s+)/;
 /* 문장이 완결된 꼴로 끝나는지 — 토막(‘비용과 기간’, ‘3주’)을 걸러 낸다 */
-var CARD_END_RE = /(?:습니다|입니다|합니다|됩니다|있습니다|없습니다|십니다|입니다|니다|이에요|예요|해요|할게요|보세요|주세요|하죠|세요|죠|네요|까요|군요|겠습니다|음|함|다|요)$/;
+/* 결말 어미 — 2026-11-22 지용 님 제보 수정. 예전에는 존댓말·해라체(~습니다·~다·~요)만 받아서
+   친구말(~해·~어·~야·~줄게·~같아·~봐) 방의 발언이 전부 '결말 없는 조각'으로 버려졌고,
+   결론·근거·이견 세 칸이 비어 기계식 fallback 문구만 남았다. 친구말 어미를 함께 받는다. */
+var CARD_END_RE = /(?:습니다|입니다|합니다|됩니다|있습니다|없습니다|십니다|니다|이에요|예요|해요|할게요|보세요|주세요|하죠|세요|죠|네요|까요|군요|겠습니다|잖아|거야|거지|것 ?같아|같아|싶어|줄게|볼게|할게|줄래|볼래|봐|줘|해|돼|워|겨|려|대|래|지|네|어|아|게|음|함|다|요)$/;
+/* 제안·선택 표현 — 결론 문장이 없을 때 '어느 쪽으로 갈지'가 가장 선명한 발언을 결론으로 올린다 */
+var CARD_PICK_RE = /(?:추천|제안|정하|고르|무난|확실|우선|먼저|쪽이|게 좋|하자|할게|볼게|어때|어떨까|좋겠)/;
+/* 부정·단점 표현 — 결론·근거가 아니라 이견 칸으로 보낸다(친구말 포함) */
+var CARD_NEG_RE = /(?:단점|부담|스트레스|불편|걸려서|걸립니다|없다|없어|없음|어려|어렵|주의|쉬워|쉽지|아쉽|위험|우려|끊기|놓칠|빠듯|비싸|과하|무리)/;
+/* 기계식 맹탕 문구 — 어떤 경로로도 카드에 나오지 않게 한다(예전에 저장된 카드 포함) */
+var CARD_BANNED_RE = /(?:안건을\s*두고\s*\d+개\s*관점을\s*비교했고|확정은\s*.{1,14}님\s*승인\s*후로\s*남겼습니다|이번\s*대화에서는\s*확인된\s*수치가\s*따로\s*제시되지\s*않았습니다|결론에\s*적힌\s*숫자가\s*이번\s*대화에서\s*나온\s*근거입니다|특별한\s*이견\s*없이\s*정리됐습니다)/;
 /* 발언 절차·인사말 — 토론요약에 남기지 않는다 */
 var CARD_META_RE = /(?:안녕하세요|반갑습니다|잘 ?부탁|제가 .{0,14}(?:역할|맡아|맡겠)|(?:함께|같이) .{0,12}(?:논의|이야기)해 ?보|말씀 ?드리겠습니다|먼저 .{0,12}(?:시작|말씀)|발언을 ?듣고|순서로 ?의견|다음 ?턴|반박해 ?보죠|한 ?줄씩|카드로 ?(?:올|정리|남)|카드에 ?(?:담|남|올|정리)|토론요약으로 ?마무리|오늘 ?정리입니다|마무리하겠습니다|여기서 ?마무리|이번 ?차례는 ?여기서|제안을 ?드리|정리해 ?드리|다음과 ?같이|두 ?가지 ?(?:제안|방안|의견)|확인 ?필요할 ?사항과 ?함께|(?:검토|살펴|확인|검증|분석|짚어)해? ?보겠습니다|리스크를 ?(?:짚|분석|검증|살펴)|리스크\s*(?:분석|검증|점검)\s*이?\s*필요|제안에 ?대해|다음으로)/;
 /* ‘지금까지 이야기한 내용을 정리하면 …’ — 절차를 알리는 머리말만 떼고 뒤의 결론은 살린다 */
@@ -7840,18 +7964,35 @@ function buildCard(r, opts) {
   var convPool = convMarked.length ? convMarked : convSents.slice(-2);
   convPool.forEach(function (s) { take(decisions, s, 2); });
   if (!decisions.length) {
+    /* 결론 표시(정했/추천/쪽이…)가 있는 문장만 먼저 줍는다 — 표시가 없으면 각 발언의 마지막
+       문장을 기계적으로 집어 오지 않고(그게 단점·우려인 경우가 많다) 아래 점수 랭킹에 맡긴다. */
     for (var i = all.length - 1; i >= 0 && decisions.length < 2; i--) {
       var mm = all[i];
       if (mm.phase === "open" || mm.phase === "converge") continue;
-      var ls = cardSentences(mm.text).filter(function (x) { return !isRiskOnly(x); });
-      var lmark = ls.filter(isDecisionSaid);
-      (lmark.length ? lmark : ls.slice(-1)).forEach(function (x) { take(decisions, x, 2); });
+      cardSentences(mm.text).filter(function (x) {
+        return !isRiskOnly(x) && !CARD_NEG_RE.test(x) && isDecisionSaid(x);
+      }).forEach(function (x) { take(decisions, x, 2); });
     }
   }
   if (!decisions.length) {
-    decisions = [(r.agenda || r.name) + " 안건을 두고 " + Math.max(2, r.members.length + relayNames.length) +
-      "개 관점을 비교했고, 확정은 " + nick() + " 님 승인 후로 남겼습니다."];
-    accepted.push(decisions[0]);
+    /* 2026-11-22 — ‘N개 관점을 비교했고, 확정은 ○○ 님 승인 후’ 같은 기계식 문장은 없앴다.
+       사회자 마무리가 없으면 실제 발언에서 '어느 쪽으로 갈지'가 가장 선명한 문장
+       (숫자·추천·선택 표현 + 뒤에 나온 발언)을 결론 후보로 올린다. */
+    var decCand = [];
+    all.forEach(function (m, mi) {
+      cardSentences(m.text).forEach(function (s) {
+        if (isRiskOnly(s)) return;
+        var w = mi / Math.max(1, all.length);            /* 뒤에 나온 말을 조금 더 */
+        if (CARD_FIGURE_RE.test(s)) w += 3;              /* 가격·기간이 있는 발언 */
+        if (CARD_PICK_RE.test(s)) w += 2;                /* 추천·선택 제안 */
+        if (CARD_NEG_RE.test(s)) w -= 3;                 /* 단점·우려는 결론이 아니다 */
+        if (m.phase === "rebuttal" || m.phase === "converge") w += 1;
+        if (isModeratorMsg(m)) w += 1;
+        decCand.push({ s: s, w: w });
+      });
+    });
+    decCand.sort(function (a, b) { return b.w - a.w; });
+    decCand.forEach(function (x) { take(decisions, x.s, 2); });
   }
 
   /* 2) 이견·리스크 — 조건·한계·반대 문장과 비판자 발언.
@@ -7861,7 +8002,7 @@ function buildCard(r, opts) {
     if (m.phase === "open") return;
     var crit = criticOf(m);
     cardSentences(m.text).forEach(function (s) {
-      var risky = CARD_RISK_RE.test(s);
+      var risky = CARD_RISK_RE.test(s) || CARD_NEG_RE.test(s);
       /* 결론·제안 문장과 사회자의 마무리 요약은 이견 칸에 넣지 않는다(리스크 색이 있을 때만) */
       if (!risky && (m.phase === "converge" || CARD_DECISION_RE.test(s))) return;
       /* 반박(rebuttal) 발언은 리스크 낱말이 없어도 이견으로 본다 — 단, 결론 문장은 뺀다 */
@@ -7871,10 +8012,8 @@ function buildCard(r, opts) {
   });
   riskCand.sort(function (a, b) { return b.crit - a.crit; });   /* 비판자 발언을 먼저 */
   riskCand.forEach(function (x) { take(risks, x.s, 3); });
-  if (!risks.length) {
-    risks.push("특별한 이견 없이 정리됐습니다. 실행 전 확인 항목만 남겼습니다.");
-    accepted.push(risks[0]);
-  }
+  /* 이견이 없으면 칸을 비워 둔다(화면에서 칸 자체가 숨는다) — ‘특별한 이견 없이 정리됐습니다’
+     같은 기계식 문장으로 채우지 않는다(2026-11-22 지용 님 제보). */
 
   /* 3) 근거 — 결정을 뒷받침하는 수치·자료 문장. 결정·이견과 겹치는 문장은 take()가 걸러 낸다. */
   function supportScore(s) {
@@ -7889,6 +8028,7 @@ function buildCard(r, opts) {
       if (isRiskOnly(s)) return;
       if (!CARD_FIGURE_RE.test(s)) return;
       if (CARD_CHECKY_RE.test(s)) return;          /* ‘확인 필요’ 성격은 확인 칸으로 넘긴다 */
+      if (CARD_NEG_RE.test(s)) return;             /* 단점·우려 문장은 이견 칸으로 */
       if (figuresCovered(s, decisions)) return;    /* 결정에 이미 적힌 숫자를 다시 쓰지 않는다 */
       evCand.push(s);
     });
@@ -7902,22 +8042,15 @@ function buildCard(r, opts) {
       if (m.phase === "converge" || m.phase === "open") return;
       cardSentences(m.text).forEach(function (s) {
         if (isRiskOnly(s) || isDecisionSaid(s) || figuresCovered(s, decisions)) return;   /* 제안·이견은 근거가 아니다 */
+        if (CARD_NEG_RE.test(s)) return;
         ev2.push(s);
       });
     });
     ev2.sort(function (a, b) { return supportScore(b) - supportScore(a); });
     ev2.forEach(function (s) { take(evidence, s, 2); });
   }
-  if (!evidence.length) {
-    /* 수치가 있었는데 모두 결정과 같은 숫자였는지, 아예 없었는지에 따라 문구를 가른다 */
-    var hadNumbers = all.some(function (m) {
-      if (m.phase === "converge" || m.phase === "open") return false;
-      return cardSentences(m.text).some(function (x) { return CARD_FIGURE_RE.test(x); });
-    });
-    evidence.push(hadNumbers ? "결론에 적힌 숫자가 이번 대화에서 나온 근거입니다."
-                             : "이번 대화에서는 확인된 수치가 따로 제시되지 않았습니다.");
-    accepted.push(evidence[0]);
-  }
+  /* 근거가 없으면 칸을 비워 둔다 — ‘이번 대화에서는 확인된 수치가 따로 제시되지 않았습니다’
+     같은 기계식 문장은 쓰지 않는다(2026-11-22 지용 님 제보). */
 
   /* 4) 확인 필요 — 조건·실사·추정 문장 */
   var checkCand = [];
@@ -8010,7 +8143,7 @@ function buildCard(r, opts) {
     draft: !!opts.draft,
     decisions: decisions,
     evidence: evidence,
-    risks: risks.length ? risks : ["특별한 이견 없이 정리됐습니다. 실행 전 확인 항목만 남겼습니다."],
+    risks: risks,   /* 비어 있으면 화면에서 칸을 숨긴다 — 맹탕 문구로 채우지 않는다 */
     checks: checks,
     todos: todos,
     stats: {
@@ -8222,6 +8355,7 @@ function tidySummaryLines(arr) {
     s = s.replace(/^@\S+\s*/, "").replace(/^[-–—•·▪◦‣]\s*/, "").trim();
     if (s.length < 6) return;
     if (cardIsMeta(s)) return;                      /* 인사·호출·서론은 AI가 보내도 버린다 */
+    if (CARD_BANNED_RE.test(s)) return;             /* 기계식 맹탕 문구는 AI가 보내도 버린다 */
     if (!/[.!?。]$/.test(s)) s += ".";
     /* 140자를 넘어도 글자 중간을 자르지 않는다 — 문장 끝(없으면 낱말 경계)에서 줄이고 ‘…’(지요). */
     if (s.length > 140) {
@@ -8241,34 +8375,47 @@ function tidySummaryLines(arr) {
   });
   return out.slice(0, 3);
 }
-async function requestAiSummary(r) {
-  if (!r || !r.remote || V3.mode !== "cloud" || !V3.signedIn) return null;
-  var ctx = r.messages.filter(function (m) { return isCardSource(m) && m.kind !== "greet"; })
-    .slice(-30).map(function (m) {
+function summaryContext(r, n) {
+  return r.messages.filter(function (m) { return isCardSource(m) && m.kind !== "greet"; })
+    .slice(-(n || 30)).map(function (m) {
       return { speaker: agentName(m.who), text: String(m.text || "").slice(0, 500) };
     });
-  if (ctx.length < 2) return null;
+}
+async function requestAiSummary(r) {
+  if (!r || !r.remote || V3.mode !== "cloud" || !V3.signedIn) return null;
   var token = await freshAccessToken();
   if (!token) return null;
-  var sig = timeoutSignal(15000), res = null;
   /* 재토론 카드 — 새 방향 기준으로만 정리하고, 이전 결론은 다시 적지 않게 서버에 같이 넘긴다. */
-  var payload = { room_id: r.id, phase: "summary_card", context: ctx };
   var re = (r.session && r.session.redebate) || null;
-  if (re && re.direction) {
-    payload.redebate_direction = re.direction;
-    payload.excluded_prev = (re.excluded || []).slice(0, 10);
-  }
-  try {
-    res = await postKkiriAi(payload, { token: token, signal: sig.signal });
-  } catch (e) {
+  async function tryOnce(n, ms) {
+    var ctx = summaryContext(r, n);
+    if (ctx.length < 2) return null;
+    var payload = { room_id: r.id, phase: "summary_card", context: ctx };
+    if (re && re.direction) {
+      payload.redebate_direction = re.direction;
+      payload.excluded_prev = (re.excluded || []).slice(0, 10);
+    }
+    var sig = timeoutSignal(ms), res = null;
+    try {
+      res = await postKkiriAi(payload, { token: token, signal: sig.signal });
+    } catch (e) {
+      sig.done();
+      return null;
+    }
     sig.done();
-    return null;
+    if (!res || !res.ok) return null;
+    var data = null;
+    try { data = await res.json(); } catch (e2) { data = null; }
+    return (data && data.ok && data.summary) ? data.summary : null;
   }
-  sig.done();
-  if (!res || !res.ok) return null;
-  var data = null;
-  try { data = await res.json(); } catch (e2) { data = null; }
-  return (data && data.ok && data.summary) ? data.summary : null;
+  /* 2026-11-22 — 예전 15초 한 번뿐이라, 8명·24턴처럼 긴 토론에서 서버 요약(정상 8~10초,
+     몰리면 더)이 끝나기 전에 끊겨 규칙 카드로 떨어졌다. 여유(18초)를 주고,
+     실패하면 최근 14발언으로 한 번 더(12초) 시도한다. */
+  var s = await tryOnce(30, 18000);
+  if (s) return s;
+  s = await tryOnce(14, 12000);
+  if (!s) { try { console.warn("[card] summary_card 응답 없음 — 규칙 카드로 대체"); } catch (e) {} }
+  return s;
 }
 /* AI가 준 세 묶음을 카드에 입힌다 — 비었거나 인사말뿐이면 규칙 카드 값을 그대로 둔다. */
 function applySummaryToCard(card, s) {
@@ -14343,6 +14490,8 @@ function wire() {
     if (sg) { useSuggestion(sg.getAttribute("data-suggest")); return; }
     var sa = e.target.closest("[data-sys-act]");
     if (sa) { sysAct(sa.getAttribute("data-sys-act")); return; }
+    var cutBtn = e.target.closest("[data-cut-turn]");
+    if (cutBtn) { hostCutTurn(); return; }
     var a = e.target.closest("[data-act]");
     if (a) { act(a.getAttribute("data-act")); return; }
     var md = e.target.closest("[data-card-md]");
