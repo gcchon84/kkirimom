@@ -3301,7 +3301,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261123-0013-b640979d";
+var APP_BUILD_VER = "20261123-0018-8f2006ae";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -7807,6 +7807,8 @@ var CARD_END_RE = /(?:습니다|입니다|합니다|됩니다|있습니다|없�
 var CARD_PICK_RE = /(?:추천|제안|정하|고르|무난|확실|우선|먼저|쪽이|게 좋|하자|할게|볼게|어때|어떨까|좋겠)/;
 /* 부정·단점 표현 — 결론·근거가 아니라 이견 칸으로 보낸다(친구말 포함) */
 var CARD_NEG_RE = /(?:단점|부담|스트레스|불편|걸려서|걸립니다|없다|없어|없음|어려|어렵|주의|쉬워|쉽지|아쉽|위험|우려|끊기|놓칠|빠듯|비싸|과하|무리)/;
+/* 방장에게 묻는 문장 — 결론·근거가 아니다(“나이를 알려 줄래”, “느낌이 어떤지 말해 줘”) */
+var CARD_ASK_RE = /(?:말해 ?줄래|알려 ?줄래|말해 ?줘|알려 ?줘|말해 ?봐|알려 ?봐|말해 ?주세요|알려 ?주세요|어떤지 ?말해|느낌이 ?어떤지|알려 ?주실|말씀해 ?주실|인지 ?알려)/;
 /* 기계식 맹탕 문구 — 어떤 경로로도 카드에 나오지 않게 한다(예전에 저장된 카드 포함) */
 var CARD_BANNED_RE = /(?:안건을\s*두고\s*\d+개\s*관점을\s*비교했고|확정은\s*.{1,14}님\s*승인\s*후로\s*남겼습니다|이번\s*대화에서는\s*확인된\s*수치가\s*따로\s*제시되지\s*않았습니다|결론에\s*적힌\s*숫자가\s*이번\s*대화에서\s*나온\s*근거입니다|특별한\s*이견\s*없이\s*정리됐습니다)/;
 /* 발언 절차·인사말 — 토론요약에 남기지 않는다 */
@@ -7980,8 +7982,10 @@ function buildCard(r, opts) {
        (숫자·추천·선택 표현 + 뒤에 나온 발언)을 결론 후보로 올린다. */
     var decCand = [];
     all.forEach(function (m, mi) {
+      if (m.phase === "open") return;                    /* 사회자 시작 멘트(“안건은 …예요”)는 결론이 아니다 */
       cardSentences(m.text).forEach(function (s) {
         if (isRiskOnly(s)) return;
+        if (CARD_ASK_RE.test(s)) return;                 /* 방장에게 묻는 질문(“…말해 줄래”)도 결론이 아니다 */
         var w = mi / Math.max(1, all.length);            /* 뒤에 나온 말을 조금 더 */
         if (CARD_FIGURE_RE.test(s)) w += 3;              /* 가격·기간이 있는 발언 */
         if (CARD_PICK_RE.test(s)) w += 2;                /* 추천·선택 제안 */
@@ -7993,6 +7997,11 @@ function buildCard(r, opts) {
     });
     decCand.sort(function (a, b) { return b.w - a.w; });
     decCand.forEach(function (x) { take(decisions, x.s, 2); });
+    /* 그래도 비면 — 마지막 발언의 실제 문장 하나(질문·이견은 빼고)로 채운다. 맹탕 문구는 쓰지 않는다. */
+    for (var li = all.length - 1; li >= 0 && !decisions.length; li--) {
+      var lms = cardSentences(all[li].text).filter(function (x) { return !isRiskOnly(x) && !CARD_ASK_RE.test(x); });
+      if (lms.length) take(decisions, lms[lms.length - 1], 1);
+    }
   }
 
   /* 2) 이견·리스크 — 조건·한계·반대 문장과 비판자 발언.
