@@ -3232,7 +3232,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261122-2009-262b42f5";
+var APP_BUILD_VER = "20261122-2012-f1920aa3";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -7111,7 +7111,7 @@ function systemFor(agent, phase) {
   var base = agent.prompt || (agent.type === "webhook" ? "너는 이 방의 AI 멤버다." : "너는 이 방의 AI 멤버다.");
   /* 모바일에서 한눈에 들어오게 · 2026-11-22 지용 님 — 모든 단계를 1~2문장(60~80자 안팎)으로 압축,
      상세 설명을 요청한 직후 턴만 3~4문장까지 허용한다 */
-  var lengthRule = brevityForTurn(agent);
+  var lengthRule = brevityForTurn(agent, phase);
   var isMod = isModAgent(agent);
   /* 사회자 전용 블록 — 2026-11-22 지용 님 "사회자는 순서가 아니라 전체 토론을 잡아주고 마무리하는 역할". */
   var modBlock = !isMod ? "" :
@@ -7145,10 +7145,11 @@ function detailAsked() {
 }
 /* 차례 지시에 붙는 길이 규칙 — 평소 1~2문장(60~80자), 상세 요청 직후 3~4문장(150자 안팎).
    사회자(moderator)는 시작 2~3문장·마무리 3~4문장(200자)까지 (2026-11-22 지용 님). */
-function brevityForTurn(agent) {
+function brevityForTurn(agent, phase) {
   var r = activeRoom();
   var isMod = isModAgent(agent);
-  var closing = isMod && !!(r && run.lastRound);
+  /* 결론은 마무리(converge) 턴에서만 — 마지막 라운드 첫 발언에서 미리 결론 내지 않게 한다 */
+  var closing = isMod && (phase === "converge" || (!!(r && run.lastRound) && !!run.isLastStep));
   if (closing) return "사회자로서 3~4문장(한국어 최대 200자)으로 ① 결정 ② 남은 이견 ③ 다음 할 일을 또렷하게 정리하세요. 인사·추임새·번호 목록은 금지합니다.";
   if (detailAsked()) {
     return "방금 질문이 상세 설명을 요구하므로 3~4문장(한국어 150자 안팎)까지 충분히 설명해도 됩니다. 그래도 서론·추임새 없이 이름·수치·이유 중심으로 말하세요.";
@@ -7165,9 +7166,14 @@ function roundRule(agent) {
   if (Number(run.roundNo) < 2) return " 아직 1라운드다. 절대 [종결]을 붙이지 말고 의견을 충분히 내라.";
   var isMod = isModAgent(agent);
   if (run.lastRound) {
-    return isMod
-      ? " 이번이 마지막 라운드다. 사회자로서 결정 1~2개·남은 이견·다음 할 일을 3~4문장으로 정리하라."
-      : " 이번이 마지막 라운드다. 결론은 사회자가 낸다. 새 결론·요약을 만들지 말고, 바로 앞사람이 말한 구체적인 내용을 이름으로 불러 받아들일 점 또는 반박 1가지만 보태라.";
+    if (isMod) {
+      /* 마지막 라운드의 첫 사회자 발언과 맨 끝 마무리가 겹쳐 ‘결론 두 번’이 나오지 않게
+         결론은 마지막 차례(isLastStep)에서만 낸다(2026-11-22 검증). */
+      return run.isLastStep
+        ? " 이번이 마지막 라운드의 마지막 발언이다. 결정 1~2개·남은 이견·다음 할 일을 3~4문장으로 정리하라."
+        : " 이번이 마지막 라운드다. 결론은 마지막 마무리에서 낼 테니 지금은 지금까지 의견의 공통점과 남은 이견을 한 줄씩 짚고, 아직 안 다룬 쟁점 하나만 던져라.";
+    }
+    return " 이번이 마지막 라운드다. 결론은 사회자가 낸다. 새 결론·요약을 만들지 말고, 바로 앞사람이 말한 구체적인 내용을 이름으로 불러 받아들일 점 또는 반박 1가지만 보태라.";
   }
   if (isMod) return " 지금까지 모든 참여자의 의견을 보고, 충분히 결론이 모였다고 판단될 때만 답변 끝에 [종결]을 붙이고 핵심 결론 1~2개로 좁혀 마무리하라. 아직 쟁점이 남았으면 붙이지 마라.";
   return " [종결]은 붙이지 말고, 앞선 의견에 대한 보완·반박이나 핵심 근거를 제시하라.";
@@ -7211,7 +7217,7 @@ function phaseInstruction(phase, r, agent) {
   else if (phase === "mention") core = "사용자가 이름을 불렀다. 짧게 답하고, 자기 몫에서 도울 일을 한 가지 제안하라.";
   else core = "안건에 맞게 짧게 발언하라.";
   /* 2026-11-22 지용 님 — 어느 단계든 카톡처럼 짧게. 사회자는 방향을 잡고 마무리하는 몫이다. */
-  return core + " " + brevityForTurn(agent) + (dupRetryNote ? " " + dupRetryNote : "");
+  return core + " " + brevityForTurn(agent, phase) + (dupRetryNote ? " " + dupRetryNote : "");
 }
 
 function turnPrompt(agent, phase) {
@@ -7555,6 +7561,10 @@ function buildCard(r, opts) {
      없으면 ‘~해 보세요 / 확인해 보세요’ 같은 실행 문장을 쓴다. 결정·이견과 겹쳐도 할 일은 남긴다. */
   var todos = [];
   var TODO_RE = /(해 ?보|해보|확인(해|하)|기록(해|하)|점검(해|하)|시도(해|하)|문의(해|하)|예약(해|하)|물어보|체크(해|하)|정리(해|하)|조정(해|하)|재 ?보|전화해|재어|측정)/;
+  /* 반대·이견 문장은 할 일이 아니다 — ‘다만 … 의견이 나왔어’를 걸러 낸다 */
+  function isDissent(s) {
+    return /^(다만|하지만|그런데|반면|단,)/.test(s) || /의견(이|은)?\s*(나왔|갈렸|있었|있다|모였)/.test(s);
+  }
   /* 카드용 cardSentences()는 ‘~거야/~지’ 같은 친구말 종결을 걸러 낸다. 할 일은 그 문장에서 나오므로
      여기서는 표시만 걷어 낸 문장으로 다시 나눈다. */
   function plainSentences(t) {
@@ -7588,7 +7598,7 @@ function buildCard(r, opts) {
   if (!modMsgs.length) modMsgs = all.slice();
   modMsgs.forEach(function (m) {
     plainSentences(m.text).forEach(function (s) {
-      if (isRiskOnly(s)) return;
+      if (isRiskOnly(s) || isDissent(s)) return;
       if (/다음 할 일|다음으로는?|할 일은/.test(s)) { todoFromClause(s); return; }
       if (TODO_RE.test(s) && !isDecisionSaid(s)) pushTodo(s);
     });
@@ -7598,7 +7608,7 @@ function buildCard(r, opts) {
     all.forEach(function (m) {
       if (m.phase === "open") return;
       plainSentences(m.text).forEach(function (s) {
-        if (!isRiskOnly(s) && TODO_RE.test(s) && !isDecisionSaid(s)) pushTodo(s);
+        if (!isRiskOnly(s) && !isDissent(s) && TODO_RE.test(s) && !isDecisionSaid(s)) pushTodo(s);
       });
     });
   }
