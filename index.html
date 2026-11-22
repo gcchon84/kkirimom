@@ -2076,7 +2076,7 @@
   .credit-free-note .cfn-fair{margin-top:7px;padding-top:7px;border-top:1px dashed #F2DFE4;font-size:11.5px;color:#7C6470}
 
   /* ===== 2026-11-22 · 게스트 체험 안내 =====
-     게스트(익명) = 방 1개 · 끼리맘 AI 10회 체험 / 가입 멤버 = 무제한 무료 + 다른 기기에서도 이어 쓰기 */
+     게스트(익명) = 방 1개 · 끼리맘 AI 10회 체험 / 가입 멤버 = 무제한 무료 */
   .guest-note{margin:9px 2px 0;padding:9px 12px;border:1px solid #F6E4E7;border-radius:12px;background:#FFF9FA;
     font-size:11px;line-height:1.6;color:#6E5760;letter-spacing:-.01em;word-break:keep-all}
   .guest-note b{color:#C94B66;font-weight:900}
@@ -9943,7 +9943,7 @@ var V3 = {
 /* =========================================================
    게스트(익명) 체험 한도 (2026-11-22 확정)
    ---------------------------------------------------------
-   게스트 = 방 1개 · 끼리맘 AI 10회 체험 / 가입 멤버 = 무제한 무료 + 다른 기기에서도 이어 쓰기
+   게스트 = 방 1개 · 끼리맘 AI 10회 체험 / 가입 멤버 = 무제한 무료
    사람·내 AI 대화는 게스트도 그대로 무료다.
    ========================================================= */
 var GUEST_ROOM_MAX = 1;
@@ -9989,7 +9989,7 @@ function openGuestLimit(what) {
   var note = $("authGuestNote");
   if (note) {
     note.hidden = false;
-    note.innerHTML = esc(msg) + "<br>무료 가입하면 방·대화 무제한 · 다른 기기에서도 이어 쓸 수 있어요";
+    note.innerHTML = esc(msg) + "<br>무료 가입하면 방·대화 무제한";
   }
   var em = $("authEmail");
   if (em) setTimeout(function () { try { em.focus(); } catch (e) {} }, 180);
@@ -10080,7 +10080,7 @@ function renderGuestSpot() {
   note.hidden = !g;
   if (!g) { note.innerHTML = ""; return; }
   note.innerHTML = "<b>게스트 체험 중</b> (방 1개 · 끼리맘 AI 10회) · 끼리맘 AI " + guestAiLeft() + "회 남음"
-    + "<br>무료 가입하면 방·대화 무제한 · 다른 기기에서도 이어 쓸 수 있어요";
+    + "<br>무료 가입하면 방·대화 무제한";
 }
 
 var DEFAULT_MODELS = {
@@ -10296,9 +10296,9 @@ function renderAccount() {
   if (anonUser) nickName = nick();
   name.textContent = nickName;
   /* 계정 카드 둘째 줄 — 무제한 무료 모드에서는 크레딧 숫자 대신 안내
-     게스트는 체험 중인 범위를, 가입 멤버는 무제한·기기 이어 쓰기 혜택을 보여 준다 */
+     게스트는 체험 중인 범위를, 가입 멤버는 무제한 무료를 보여 준다 */
   sub.textContent = FREE_LAUNCH_MODE
-    ? (isGuest() ? "게스트 체험 중 · AI " + guestAiLeft() + "/10" : "무제한 무료 · 다른 기기에서도 이어 쓰기")
+    ? (isGuest() ? "게스트 체험 중 · AI " + guestAiLeft() + "/10" : "무제한 무료")
     : (V3.ready ? creditsLabel(creditsNow()) + " 크레딧" : "크레딧 " + creditsLabel(creditsNow()));
   if (al && isGuest()) al.setAttribute("title", "게스트 체험 중 · 방 1개 · 끼리맘 AI " + guestAiLeft() + "회 남음 · 무료 가입하면 무제한");
   btn.textContent = "로그아웃";
