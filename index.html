@@ -3203,6 +3203,19 @@ var FREE_LAUNCH_MODE = true;
 if (FREE_LAUNCH_MODE) document.documentElement.classList.add("fl-free");
 
 /* =========================================================
+   무로그인 게스트 모드 스위치 (2026-11-22 지용 님 확정)
+   ---------------------------------------------------------
+   true  : ‘시작하기’ 한 번이면 로그인 창 없이 익명(게스트) 세션이 바로 열리고,
+           로그인·회원가입·탈퇴 UI 와 게스트 체험 한도(방 1개 · 끼리맘 AI 10회)를 모두 감춘다.
+   false : 기존 로그인·회원·게스트 체험 구조 그대로.
+           (로그인 함수·회원 테이블·게스트 한도 코드는 하나도 지우지 않았다 — 이 값만 바꾸면 원래대로 돌아간다)
+   서버(kkiri-ai)의 어뷰징 안전 상한(24시간 200회 · 분당 12회)은 이 스위치와 무관하게 늘 켜져 있다.
+   ========================================================= */
+var GUEST_ONLY_MODE = true;
+var AUTH_UI_ENABLED = !GUEST_ONLY_MODE;   /* 로그인·회원 UI 표시 여부 — GUEST_ONLY_MODE 의 반대값(읽기용) */
+if (GUEST_ONLY_MODE) document.documentElement.classList.add("fl-guest");
+
+/* =========================================================
    0. 기본 도구
    ========================================================= */
 function $(id) { return document.getElementById(id); }
@@ -4412,7 +4425,7 @@ function renderHome() {
     if (V3.mode === "local") cr.textContent = "데모";
     else if (!V3.signedIn) cr.textContent = "매일 300 무료";
     else if (!FREE_LAUNCH_MODE) cr.textContent = creditsLabel(creditsNow()) + " 크레딧";
-    else cr.textContent = isGuest() ? "게스트 체험" : "무제한 무료";
+    else cr.textContent = (isGuest() && !GUEST_ONLY_MODE) ? "게스트 체험" : "무제한 무료";
   }
   try { renderGuestSpot(); } catch (e) {}
   var rc = $("homeRoomCount");
@@ -6043,7 +6056,7 @@ function turnRoute(a) {
   /* 게스트 체험 한도 — 끼리맘 AI 10회를 다 쓰면 가입 안내로 보낸다.
      내 키(BYOK)·내 AI 대화는 게스트도 그대로 무료라 여기서 막지 않는다. */
   var ownKeyAI = !!(a && (a.type === "byok" || (a.type === "builtin" && (a.model === "gemini" || a.model === "openai"))));
-  if (!ownKeyAI && isGuest() && guestAiLeft() <= 0) return "guest-limit";
+  if (!GUEST_ONLY_MODE && !ownKeyAI && isGuest() && guestAiLeft() <= 0) return "guest-limit";
   if (V3.mode === "mock") return "kkiri-mock";
   /* 끼리맘 AI(주제별 전문가·직접 만들기)는 오직 끼리 크레딧(10크레딧/회)으로만 답한다.
      내 API 키(BYOK)는 '내 AI'의 내 제미나이·내 GPT만 쓴다 — 두 서비스를 섞지 않는다. */
@@ -6071,6 +6084,10 @@ function routeGuide(a, route) {
     limit: true
   };
   if (route === "need-connect") {
+    if (GUEST_ONLY_MODE) return {
+      text: "연결을 준비하고 있어요 · 잠깐 뒤 다시 말을 걸어 주세요.",
+      acts: []
+    };
     /* 끼리맘 AI는 크레딧 전용 — 내 API 키로 대신 부르지 않는다 (무제한 무료 모드에서는 무료 안내) */
     if (a && a.type === "expert") return {
       text: FREE_LAUNCH_MODE
@@ -10495,7 +10512,7 @@ async function dbInit() {
     db.ready = false;
     /* v3: 로그인 전에는 RLS가 막으므로 '로컬 데모'가 아니라 '로그인 후 연결'로 안내 */
     var waiting = V3.mode === "cloud" && !V3.signedIn;
-    setLiveStatus(waiting ? "wait" : "local", waiting ? "로그인하면 연결" : "로컬 모드 · 데모");
+    setLiveStatus(waiting ? "wait" : "local", waiting ? waitLabel() : "로컬 모드 · 데모");
     if (typeof console !== "undefined" && console.warn) console.warn("[kkiri] db init failed", e && e.message);
     return false;
   }
@@ -10666,6 +10683,8 @@ function openNickModal() {
    오프라인·mock 테스트 모드(?mock=1)는 기존 로컬 동작 그대로. */
 function needStartFirst() {
   if (!(V3.mode === "cloud" && !V3.signedIn)) return false;
+  /* 무로그인 모드 — 로그인 창 대신 조용히 익명 세션을 연다(한 번 더 누르면 그대로 진행) */
+  if (GUEST_ONLY_MODE) { ensureGuest(); return true; }
   setAuthMsg("info", "서버에 방을 만들고 초대하려면 먼저 시작해 주세요 · 시작하면 모든 대화를 무료로 쓸 수 있어요.");
   toast("방을 만들고 초대하려면 먼저 시작해 주세요 · 시작하면 모든 대화가 무료예요");
   openModal("authModal");
@@ -10745,7 +10764,12 @@ function guestAiUsed() {
     return (n > 0) ? Math.floor(n) : 0;
   } catch (e) { return 0; }
 }
-function guestAiLeft() { return Math.max(0, GUEST_AI_MAX - guestAiUsed()); }
+function guestAiLeft() {
+  /* 무로그인 모드 — 게스트 체험 10회 한도를 쓰지 않는다.
+     과도한 호출은 서버(kkiri-ai)가 24시간 200회 · 분당 12회로 막는다. */
+  if (GUEST_ONLY_MODE) return GUEST_AI_MAX;
+  return Math.max(0, GUEST_AI_MAX - guestAiUsed());
+}
 function clearGuestAiUsed() { try { localStorage.removeItem(GUEST_AI_KEY); } catch (e) {} }
 function markGuestAiUsed(n) {
   if (!isGuest()) return;
@@ -10793,6 +10817,7 @@ function guestStartMsg() {
 }
 /* 방 개설 게이트 — 게스트는 1개까지. 막혔으면 true */
 function guestRoomBlocked() {
+  if (GUEST_ONLY_MODE) return false;   /* 무로그인 모드 — 방 개수 제한 없음 */
   if (!isGuest() || V3.mode === "local") return false;
   if (guestRoomLeft() > 0) return false;
   openGuestLimit("room");
@@ -10862,6 +10887,7 @@ async function roomCapacityFromServer(roomId) {
 function renderGuestSpot() {
   var note = $("guestNote");
   if (!note) return;
+  if (GUEST_ONLY_MODE) { note.hidden = true; note.innerHTML = ""; return; }   /* 로그인·체험 안내 없음 */
   var g = isGuest() && V3.mode !== "local";
   note.hidden = !g;
   if (!g) { note.innerHTML = ""; return; }
@@ -11129,9 +11155,9 @@ function renderAccount() {
   /* 계정 카드 둘째 줄 — 무제한 무료 모드에서는 크레딧 숫자 대신 안내
      게스트는 체험 중인 범위를, 가입 멤버는 무제한 무료를 보여 준다 */
   sub.textContent = FREE_LAUNCH_MODE
-    ? (isGuest() ? "게스트 체험 중 · AI " + guestAiLeft() + "/10" : "무제한 무료")
+    ? ((isGuest() && !GUEST_ONLY_MODE) ? "게스트 체험 중 · AI " + guestAiLeft() + "/10" : "무제한 무료")
     : (V3.ready ? creditsLabel(creditsNow()) + " 크레딧" : "크레딧 " + creditsLabel(creditsNow()));
-  if (al && isGuest()) al.setAttribute("title", "게스트 체험 중 · 방 1개 · 끼리맘 AI " + guestAiLeft() + "회 남음 · 무료 가입하면 무제한");
+  if (al && isGuest() && !GUEST_ONLY_MODE) al.setAttribute("title", "게스트 체험 중 · 방 1개 · 끼리맘 AI " + guestAiLeft() + "회 남음 · 무료 가입하면 무제한");
   btn.textContent = "로그아웃";
   renderStartUI();
 }
@@ -11189,7 +11215,7 @@ function renderExpertPicker() {
       var catFree = draft ? catByKey(roomForm.category).label : categoryLabelOf(r);
       hint.innerHTML =
         '<b class="hint-lead">' + esc(catFree) + '에 특화된 <b>전문가 AI 팀</b>이에요.</b>'
-        + (isGuest() ? '<span class="hint-line">게스트는 끼리맘 AI를 10회까지 체험할 수 있어요 · 남은 ' + guestAiLeft() + '회 · 가입하면 무제한이에요.</span>' : '');
+        + (!GUEST_ONLY_MODE && isGuest() ? '<span class="hint-line">게스트는 끼리맘 AI를 10회까지 체험할 수 있어요 · 남은 ' + guestAiLeft() + '회 · 가입하면 무제한이에요.</span>' : '');
     } else {
       var catLabel = draft ? catByKey(roomForm.category).label : categoryLabelOf(r);
       /* 크레딧은 끼리맘 AI를 부를 때만 나간다 — 탭 맨 위 안내에서 바로 보이게 */
@@ -11347,6 +11373,7 @@ async function afterSignIn(user) {
   V3.signedIn = true;
   /* 이 기기에서 게스트 체험을 이미 썼다면, 새로고침·재접속으로 익명 세션이 다시 붙어도 체험 상태를 유지한다 */
   if (V3.user.isAnonymous && guestClaimed() && !V3._guestFresh) V3.guestTrialUsed = true;
+  if (GUEST_ONLY_MODE) V3.guestTrialUsed = false;   /* 무로그인 모드 — 예전 체험 이력을 게스트에 적용하지 않는다 */
   var got = null;
   /* 2차 안전장치: 정식 로그인 유저는 접속할 때 매일 300크레딧을 한 번 더 조용히 확인한다.
      (pg_cron 00:00 KST 지급이 멈춰 있을 때를 대비. 익명 게스트는 대상이 아니므로 건너뜀) */
@@ -11505,6 +11532,31 @@ function renderGuestButton() {
   var used = guestClaimed();
   t.textContent = used ? "게스트로 계속하기" : "게스트로 먼저 체험하기";
   sub.textContent = used ? "끼리맘 AI 체험은 끝났어요 · 사람·내 AI 대화는 무료" : "1회 100크레딧 무료 체험 · 이메일 없이 바로";
+}
+/* ---------- 무로그인 게스트 입장 (GUEST_ONLY_MODE) ----------
+   ‘시작하기’ 한 번이면 로그인 창 대신 익명(anon) 세션을 열고 바로 홈으로 들어간다.
+   초대 링크(?code=·?room=)로 들어온 사람은 autoJoinPending 이 같은 일을 이미 한다. */
+var guestEnsure = null;
+function ensureGuest() {
+  if (!GUEST_ONLY_MODE) return Promise.resolve(false);
+  if (V3.mode !== "cloud" || !db.client) return Promise.resolve(false);
+  if (V3.signedIn) return Promise.resolve(true);      /* 이미 세션(게스트·회원)이 있으면 그대로 */
+  if (guestEnsure) return guestEnsure;
+  guestEnsure = (async function () {
+    try {
+      var res = await db.client.auth.signInAnonymously();
+      if (!res || res.error) throw (res && res.error) || new Error("anonymous sign-in failed");
+      var user = res.data && res.data.user;
+      if (!user) throw new Error("anonymous sign-in failed");
+      await afterSignIn(user);
+      renderAll();
+      return true;
+    } catch (e) {
+      toast("연결이 잠시 몰렸어요 · ‘시작하기’를 한 번 더 눌러 주세요");
+      return false;
+    } finally { guestEnsure = null; }
+  })();
+  return guestEnsure;
 }
 async function signInGuest() {
   setAuthMsg("", "");
@@ -11823,7 +11875,7 @@ async function signOutAll() {
   resetSessionView();
   /* 게스트 체험 이력(쿠키·localStorage)은 로그아웃해도 남긴다 — 다시 게스트로 무한 체험하지 못하게 */
   try { if (db.client) await db.client.auth.signOut(); } catch (e) {}
-  setLiveStatus(V3.mode === "cloud" ? "wait" : "local", V3.mode === "cloud" ? "로그인하면 연결" : "로컬 모드 · 데모");
+  setLiveStatus(V3.mode === "cloud" ? "wait" : "local", V3.mode === "cloud" ? waitLabel() : "로컬 모드 · 데모");
   toast("로그아웃했어요");
 }
 /* ---------- 초대 링크 자동 입장 ----------
@@ -11846,7 +11898,7 @@ function renderJoinGate() {
   var title = $("joinGateTitle"), sub = $("joinGateSub"), acts = $("joinGateActions"), spin = $("joinGateSpin");
   if (joinFlow.failed) {
     if (title) title.textContent = "초대받은 방으로 들어가지 못했어요";
-    if (sub) sub.textContent = "연결이 잠시 몰렸어요 · 다시 시도하거나 로그인해서 들어와 주세요";
+    if (sub) sub.textContent = GUEST_ONLY_MODE ? "연결이 잠시 몰렸어요 · 잠깐 뒤 다시 시도해 주세요" : "연결이 잠시 몰렸어요 · 다시 시도하거나 로그인해서 들어와 주세요";
     if (acts) acts.hidden = false;
     if (spin) spin.hidden = true;
   } else {
@@ -11882,9 +11934,15 @@ async function autoJoinPending() {
     joinFlow.busy = false; joinFlow.failed = true;
     renderJoinGate();
     renderAll();
-    setAuthMode("login");
-    setAuthMsg("info", "초대받은 방으로 자동 연결하지 못했어요. 로그인하거나 게스트로 계속하면 그 방으로 들어갑니다.");
-    openModal("authModal");
+    if (GUEST_ONLY_MODE) {
+      /* 무로그인 모드 — 로그인 창을 띄우지 않고 ‘다시 시도’만 남긴다 */
+      setAuthMsg("", "");
+      renderJoinGate();
+    } else {
+      setAuthMode("login");
+      setAuthMsg("info", "초대받은 방으로 자동 연결하지 못했어요. 로그인하거나 게스트로 계속하면 그 방으로 들어갑니다.");
+      openModal("authModal");
+    }
   }
 }
 function maybeAskAuth() {
@@ -12200,7 +12258,7 @@ async function deleteMyAccount() {
   V3.profile = { nickname: "", plan: "free", credits: 0, daily: 0, bonus: 0, paid: 0, refCode: "", referred: false };
   resetSessionView();
   clearAccountLocal();
-  setLiveStatus("wait", "로그인하면 연결");
+  setLiveStatus("wait", waitLabel());
   delAcct.busy = false;
   toast("회원 탈퇴가 완료되었어요.");
 }
@@ -12816,7 +12874,7 @@ async function mockExpertTurn(agent, phase) {
   if (!canSpendCredits(activeRoom())) return { skip: true, note: "끼리맘 AI는 방장만 부를 수 있어요 · 모든 대화는 무료예요" };
   if (!V3.signedIn) return { skip: true, note: "로그인(또는 게스트 시작)하면 끼리맘 AI를 무료로 부를 수 있어요." };
   /* 게스트 10회 체험을 다 쓰면 가입 안내 */
-  if (isGuest() && guestAiLeft() <= 0) { openGuestLimit("ai"); return { skip: true, note: agent.name + " · 끼리맘 AI 10회 체험을 다 썼어요 · 무료 가입하면 무제한으로 쓸 수 있어요" }; }
+  if (!GUEST_ONLY_MODE && isGuest() && guestAiLeft() <= 0) { openGuestLimit("ai"); return { skip: true, note: agent.name + " · 끼리맘 AI 10회 체험을 다 썼어요 · 무료 가입하면 무제한으로 쓸 수 있어요" }; }
   if (V3.guestTrialUsed && !FREE_LAUNCH_MODE) return guestAskLogin(agent.name);
   if (!FREE_LAUNCH_MODE && creditsNow() < cost) return { skip: true, note: agent.name + " · 크레딧이 부족해요(남은 " + creditsNow() + "). 설정에서 내 API 키를 연결하면 크레딧 없이 계속 쓸 수 있어요." };
   await sleep(rand(420, 820));
@@ -12838,7 +12896,7 @@ async function cloudExpertTurn(agent, phase) {
   if (!r) return { skip: true, note: "" };
   if (!canSpendCredits(r)) return { skip: true, note: "끼리맘 AI는 방장만 부를 수 있어요 · 모든 대화는 무료예요" };
   /* 게스트 10회 체험을 다 쓰면 가입 안내 */
-  if (isGuest() && guestAiLeft() <= 0) { openGuestLimit("ai"); return { skip: true, note: agent.name + " · 끼리맘 AI 10회 체험을 다 썼어요 · 무료 가입하면 무제한으로 쓸 수 있어요" }; }
+  if (!GUEST_ONLY_MODE && isGuest() && guestAiLeft() <= 0) { openGuestLimit("ai"); return { skip: true, note: agent.name + " · 끼리맘 AI 10회 체험을 다 썼어요 · 무료 가입하면 무제한으로 쓸 수 있어요" }; }
   if (V3.guestTrialUsed && !FREE_LAUNCH_MODE) return guestAskLogin(agent.name);
   var token = await freshAccessToken();
   if (!token) return { skip: true, note: "로그인하면 끼리맘 AI를 무료로 부를 수 있어요 · 다시 로그인해 주세요." };
@@ -12915,6 +12973,32 @@ function applyFreeLaunchCopy() {
   if (cp) cp.textContent = "무제한 무료";
 }
 
+/* 연결 안내 상태 문구 — 무로그인 모드에서는 ‘로그인하면 연결’ 대신 ‘연결 중’ */
+function waitLabel() { return GUEST_ONLY_MODE ? "연결 중" : "로그인하면 연결"; }
+
+/* 무로그인 게스트 모드 — 로그인·회원 UI 를 화면에서 감춘다.
+   마크업·코드는 그대로 두고 숨기기만 한다(스위치를 끄면 원래 화면이 그대로 돌아온다). */
+function applyGuestOnlyUI() {
+  if (!GUEST_ONLY_MODE) return;
+  var hide = function (el) { if (el) el.hidden = true; };
+  hide($("accountLine"));       /* 사이드바 로그인·회원가입·로그아웃 카드 */
+  hide($("guestNote"));         /* 홈 상단 ‘게스트 체험 중 (방 1개 · 끼리맘 AI 10회)’ */
+  hide($("homeCreditBtn"));     /* 홈 크레딧 칩 — 무로그인 모드에서는 보여 줄 것이 없다 */
+  hide($("deleteAccountBtn"));  /* 내 크레딧 창의 회원 탈퇴 */
+  hide($("joinLoginBtn"));      /* 초대 자동 입장 실패 창의 로그인 버튼 */
+  /* 친구 초대 — 크레딧 배지와 ‘가입하면 +300’ 안내는 감춘다 */
+  ["sideInviteBtn", "homeInviteBtn"].forEach(function (id) {
+    var b = $(id);
+    if (!b) return;
+    b.setAttribute("title", "친구 초대 · 링크를 보내 함께 대화해요");
+    var badge = b.querySelector(".inv-badge");
+    if (badge) badge.hidden = true;
+  });
+  /* 시작 게이트 아래 한 줄 — ‘게스트 1개 · 10회 · 가입하면’ 대신 무료 안내 */
+  var gnote = document.querySelector("#homeGate .gate-note");
+  if (gnote) gnote.innerHTML = "<span>내 AI · 사람 · 끼리맘 AI 대화 모두 무료예요</span>";
+}
+
 /* ---------- v3 이벤트 ---------- */
 function wireV3() {
   var cb = $("creditBadge");
@@ -12955,7 +13039,11 @@ function wireV3() {
   var hsc = $("homeStartCard");
   if (hsc) hsc.addEventListener("click", openStart);
   var gateBtn = $("gateStartBtn");
-  if (gateBtn) gateBtn.addEventListener("click", openStart);
+  if (gateBtn) gateBtn.addEventListener("click", function () {
+    /* 무로그인 게스트 모드 — 로그인 창 없이 바로 익명 세션으로 홈(새 방 · 내 방 목록)에 들어간다 */
+    if (GUEST_ONLY_MODE) { ensureGuest(); return; }
+    openStart();
+  });
   /* 초대 링크 자동 입장 게이트 — 실패했을 때 다시 시도 / 로그인·게스트로 들어가기 */
   var jr = $("joinRetryBtn");
   if (jr) jr.addEventListener("click", function () { joinFlow.failed = false; joinFlow.busy = false; autoJoinPending(); });
@@ -13116,7 +13204,7 @@ async function bootV3() {
        세션이 있으면 afterSignIn → dbReload 가 초기 로드를 끝낸다. */
     await authInit();
     if (V3.signedIn && !db.ready) await dbInit();
-    else if (!V3.signedIn) { db.ready = false; setLiveStatus("wait", "로그인하면 연결"); }
+    else if (!V3.signedIn) { db.ready = false; setLiveStatus("wait", waitLabel()); }
   }
   V3.roomId = state.activeRoomId;
   await ensureMembership(state.activeRoomId);
@@ -13840,6 +13928,7 @@ renderSwatches();
 wire();
 wireV3();
 applyFreeLaunchCopy();
+applyGuestOnlyUI();
 initInAppBar();
 try {
   if ("serviceWorker" in navigator && location.protocol === "https:") {
