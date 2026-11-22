@@ -4062,6 +4062,24 @@ function avatarHtml(id, size, tint) {
 }
 
 /* 방 목록은 하나 — 종류를 나누지 않고 아이콘·이름만으로 구분한다. */
+/* 2026-11-22 지용 님 — ‘내 대화방’에는 내가 만든 방과 초대받아 들어간 방만 올린다.
+   서버 RLS 는 공개방(is_public)을 누구나 읽게 두므로(초대 코드 입장 호환), 목록에 올릴지는 여기서 가른다.
+     · kkiri_rooms.owner_id 가 내 계정인 방 (내가 만든 방)
+     · kkiri_room_members 에 내가 있는 방 (초대 코드(?code=)로 들어간 방 — 방장·멤버)
+     · 이 브라우저가 만든 방 (rememberHost·hostUid — 게스트로 만든 방을 이어받은 경우)
+   남이 만든 공개방(프로젝트방 등)은 초대 코드로 직접 들어오기 전까지 목록에 올리지 않는다. */
+function isMyRoomRow(row, prev) {
+  if (!row || !row.id) return false;
+  var uid = (V3.user && V3.user.id) ? String(V3.user.id) : "";
+  /* 아직 세션이 확인되기 전(부팅 첫 조회)에는 서버가 RLS 로 걸러 준 목록을 그대로 둔다 —
+     여기서 0개로 지우면 로그인 사용자의 방 목록이 잠깐 비고 캐시까지 덮어쓴다. */
+  if (!uid) return true;
+  if (String(row.owner_id || "") === uid) return true;
+  if ((V3.myRoles || {})[String(row.id)]) return true;      /* 멤버십이 확인된 방(초대받아 들어간 방) */
+  if (isHostLocal(row.id)) return true;                     /* 이 브라우저가 만든 방 */
+  if (prev && String(prev.hostUid || "") === uid) return true;
+  return false;
+}
 /* 내가 이 방의 방장(owner)인가?
    · 로컬·mock 방(서버 없는 데모·방 만들기 직후) = 이 브라우저가 만든 방이라 항상 방장
    · 서버 방 = kkiri_rooms.owner_id 가 내 계정이거나, 멤버십 역할(kkiri_room_members.role)이 'owner'
@@ -9745,6 +9763,8 @@ function dbApply(roomRows, agentRows, fresh) {
     if (joinHit && hidden[row.id]) unhideRoomLocal(row.id);
     var s = row.settings || {};
     var p = prev[row.id];
+    /* 남이 만든 공개방은 내 목록에서 완전히 뺀다 — 지금 들어가려는 방(joinHit)만 예외 */
+    if (!joinHit && !isMyRoomRow(row, p)) return;
     /* 멤버는 서버의 is_active 로만 정한다. ‘활성 AI가 0명이면 예전 데이터로 보고 전부 다시 넣기’ 같은
        되살리기는 두지 않는다 — 방에서 마지막 AI를 내보내면 그 AI가 곧바로 되살아나 보이던 원인이었다.
        (is_active 가 NULL 인 예전 행은 위에서 이미 활성으로 들어온다) */
