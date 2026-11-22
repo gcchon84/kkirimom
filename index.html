@@ -3232,7 +3232,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261122-2016-130f0cbe";
+var APP_BUILD_VER = "20261122-2019-52cd37e8";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -7574,7 +7574,9 @@ function buildCard(r, opts) {
       .filter(function (x) { return x.length >= 8; });
   }
   function pushTodo(t) {
-    var q = String(t || "").replace(/^[\s:·•\-–]+/, "").replace(/[,.。，]+$/, "").trim();
+    var q = String(t || "").replace(/^[\s:·•\-–]+/, "")
+      .replace(/^(?:그리고|또한|그다음|또|한편|다만|결국|그래서)\s+/, "")
+      .replace(/[,.。，]+$/, "").trim();
     if (q.length < 6 || q.length > 100) return;
     for (var i = 0; i < todos.length; i++) if (similarity(todos[i], q) >= 0.55) return;
     if (todos.length < 3) todos.push(q);
