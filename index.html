@@ -3255,7 +3255,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261122-2126-374eb1de";
+var APP_BUILD_VER = "20261122-2149-17c3bbf2";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -7766,9 +7766,12 @@ function buildCard(r, opts) {
       if (TODO_RE.test(q)) pushTodo(q);
     });
   }
-  var modMsgs = all.filter(function (m) { return m.phase === "converge" || isModeratorMsg(m); });
-  if (!modMsgs.length) modMsgs = all.slice();
+  /* 2026-11-22 — 사회자의 시작(open) 멘트는 할 일이 아니다. 거기서 던진 질문(“~어떤지 확인해 봐야 할 것 같아”)이
+     그대로 ‘다음 할 일’로 올라오던 문제를 막는다(지용 님 제보). */
+  var modMsgs = all.filter(function (m) { return m.phase === "converge" || (isModeratorMsg(m) && m.phase !== "open"); });
+  if (!modMsgs.length) modMsgs = all.filter(function (m) { return m.phase !== "open"; });
   modMsgs.forEach(function (m) {
+    if (m.phase === "open" || m.phase === "greet") return;
     plainSentences(m.text).forEach(function (s) {
       if (isRiskOnly(s) || isDissent(s)) return;
       if (/다음 할 일|다음으로는?|할 일은/.test(s)) { todoFromClause(s); return; }
@@ -8017,7 +8020,17 @@ function tidySummaryLines(arr) {
     if (s.length < 6) return;
     if (cardIsMeta(s)) return;                      /* 인사·호출·서론은 AI가 보내도 버린다 */
     if (!/[.!?。]$/.test(s)) s += ".";
-    if (s.length > 140) s = s.slice(0, 139) + ".";
+    /* 140자를 넘어도 글자 중간을 자르지 않는다 — 문장 끝(없으면 낱말 경계)에서 줄이고 ‘…’(지요). */
+    if (s.length > 140) {
+      var cut = s.slice(0, 140);
+      var sent = cut.match(/^[\s\S]*[.!?。]/);
+      if (sent && sent[0].length >= 30) cut = sent[0];
+      else {
+        var wc = cut.replace(/[\s,·、]+[^\s,·、]*$/, "");
+        cut = (wc.length >= 30 ? wc : cut) + "…";
+      }
+      s = cut;
+    }
     var dup = false;
     out.forEach(function (o) { if (!dup && similarity(o, s) >= 0.6) dup = true; });
     if (dup) return;
@@ -8058,8 +8071,11 @@ async function requestAiSummary(r) {
 function applySummaryToCard(card, s) {
   if (!card || !s) return false;
   var d = tidySummaryLines(s.decision), g = tidySummaryLines(s.grounds), k = tidySummaryLines(s.risks);
-  if (!d.length && !g.length && !k.length) return false;
+  /* 2026-11-22 — ‘다음 할 일’도 서버가 뽑은 todos 를 쓴다(대화 초반 질문을 긁어오지 않게). */
+  var t = tidySummaryLines(s.todos);
+  if (!d.length && !g.length && !k.length && !t.length) return false;
   if (d.length) card.decisions = d;
+  if (t.length) card.todos = t;
   if (g.length) card.evidence = g;
   if (k.length) card.risks = k;
   card.aiSummary = true;
