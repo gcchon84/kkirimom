@@ -7463,10 +7463,12 @@ function shareCard(mid) {
   var m = messageById(mid);
   if (!m || !m.card) return;
   var text = cardPlain(m.card);
-  var title = "토론요약 · " + m.card.title;
   if (navigator.share) {
     try {
-      navigator.share({ title: title, text: text }).then(function () {
+      /* 2026-11-22 지용 님 — title 을 넘기면 안드로이드 공유 시트가 ‘제목 - 본문’으로 합쳐서
+         본문 첫 줄(토론요약 · 방 이름)과 겹쳐 같은 제목이 두 번 보였다.
+         본문에 이미 제목이 들어 있으니 title 은 넘기지 않고 text 만 보낸다. */
+      navigator.share({ text: text }).then(function () {
         toast("공유 창을 열었어요");
       }, function (err) {
         if (err && err.name === "AbortError") return;
@@ -13687,7 +13689,7 @@ function wire() {
     shareViaKakao(link, roomTitle, "끼리맘 대화방에 초대합니다", function () {
       if (navigator && typeof navigator.share === "function") {
         try {
-          navigator.share({ title: (r && r.name) || "끼리맘 대화방", text: "끼리맘 대화방에 초대합니다", url: link })
+          navigator.share({ text: "끼리맘 대화방에 초대합니다", url: link })
             .then(function () {})
             .catch(function (err) {
               if (err && (err.name === "AbortError" || err.name === "NotAllowedError")) return;  /* 취소는 그대로 조용히 넘김 */
