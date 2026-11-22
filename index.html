@@ -5087,9 +5087,12 @@ function renderAutoTalkBanner(rm) {
   var c = (r && !ownerHere) ? autoLive(r) : null;
   var hostGone = false, awayRef = 0;
   if (c) {
-    if (!autoHostIsHere(r)) {
+    /* 방장이 직접 남긴 ‘자리 비움’ 기록(st=away)이 가장 확실하다 — 접속 명단이 아직 남아 있어도 따른다.
+       기록이 없으면(st=run) 접속 명단에서 방장이 사라졌는지로 판단한다(창을 그냥 닫은 경우). */
+    var hostHere = autoHostIsHere(r);
+    if (c.st === "away" || !hostHere) {
       hostGone = true;
-      /* 방장이 남긴 비운 시각이 가장 정확하다 — 없으면 마지막 체크포인트, 그것도 없으면 내가 처음 못 본 시각 */
+      /* 방장이 남긴 비운 시각 → 없으면 마지막 체크포인트 → 그것도 없으면 내가 처음 못 본 시각 */
       if (!autoAwaySeen[r.id]) autoAwaySeen[r.id] = Math.max(Number(c.awayAt) || 0, Date.now() - HOST_AWAY_GRACE_MS);
       awayRef = Number(c.awayAt) || Number(c.ut) || (autoAwaySeen[r.id] || 0);
     } else {
