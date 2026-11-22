@@ -660,12 +660,8 @@
   .home-foot{margin:20px 0 6px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center;align-items:center}
   .home-donate{border:1px dashed var(--line);background:#fff;color:#9B858D;font:inherit;font-size:11.5px;font-weight:800;border-radius:999px;padding:8px 15px;cursor:pointer;letter-spacing:-.01em;transition:border-color .12s ease,color .12s ease,background .12s ease}
   .home-donate:hover{border-color:#eccd9f;color:#8a5a1f;background:#fffaf2}
-  /* 💬 오픈채팅 — 카카오톡 오픈채팅방으로 (2026-11-22) */
+  /* 💬 오픈채팅 — 카카오톡 오픈채팅방으로. 노란 강조 없이 다른 하단 버튼과 같은 기본 스타일 (2026-11-22 지용 님) */
   a.home-donate,a.side-donate{text-decoration:none;box-sizing:border-box;display:inline-flex;align-items:center;gap:5px}
-  .home-donate.home-openchat{border-style:solid;border-color:#EADB8E;background:#FFFBE6;color:#6B5A16}
-  .home-donate.home-openchat:hover{border-color:#E0CC6B;background:#FFF6CC;color:#5A4A0E}
-  .side-donate.side-openchat{border-style:solid;border-color:#4A4630;background:rgba(238,214,74,.10);color:#EFE3A8;justify-content:center}
-  .side-donate.side-openchat:hover{background:rgba(238,214,74,.22);border-color:#6A6242;color:#fff}
   @media (max-width:900px){ .home-foot .home-invite{grid-column:1 / -1} }
   /* 🎁 친구 초대 — 서비스를 소개하며 내 초대 링크를 보내는 버튼 */
   .home-donate.home-invite{border-style:solid;border-color:#FFC7D2;background:var(--brand-tint);color:#C94B66}
@@ -2513,7 +2509,7 @@ window.__KKIRI_BOOT = (function () {
     <div class="side-foot">
       <button type="button" class="side-donate side-invite" id="sideInviteBtn" title="친구 초대 · 친구가 가입하면 +300 크레딧"><svg class="ico sm" aria-hidden="true" focusable="false"><use href="#i-gift"></use></svg><span>친구 초대</span><em class="inv-badge" aria-label="+300 크레딧"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-gem"></use></svg>+300</em></button>
       <a class="side-donate side-maker" id="sideMakerBtn" href="https://brand.naver.com/65ppa" target="_blank" rel="noopener noreferrer" title="육오빠 쇼핑몰 (brand.naver.com/65ppa)"><svg class="ico sm" aria-hidden="true" focusable="false"><use href="#i-gift"></use></svg><span>육오빠 쇼핑몰</span></a>
-      <a class="side-donate side-openchat" id="sideOpenchatBtn" href="https://open.kakao.com/o/gKRDFaYi" target="_blank" rel="noopener noreferrer" title="끼리맘 카카오톡 오픈채팅방"><svg class="ico sm" aria-hidden="true" focusable="false"><use href="#i-chat"></use></svg><span>오픈채팅</span></a>
+      <a class="side-donate" id="sideOpenchatBtn" href="https://open.kakao.com/o/gKRDFaYi" target="_blank" rel="noopener noreferrer" title="끼리맘 카카오톡 오픈채팅방"><svg class="ico sm" aria-hidden="true" focusable="false"><use href="#i-chat"></use></svg><span>오픈채팅</span></a>
       <button type="button" class="side-donate side-feedback" id="sideFeedbackBtn" title="불편한 점·아이디어 보내기"><svg class="ico sm" aria-hidden="true" focusable="false"><use href="#i-chat"></use></svg><span>의견 보내기</span></button>
       <button type="button" class="side-donate side-install" id="sideInstallBtn" title="홈 화면에 추가 · 즐겨찾기"><svg class="ico sm" aria-hidden="true" focusable="false"><use href="#i-star"></use></svg><span>홈 화면에 추가</span></button>
       <p class="side-version">Kkirimom</p>
@@ -2570,7 +2566,7 @@ window.__KKIRI_BOOT = (function () {
         <div class="home-foot" id="homeFoot">
           <button type="button" class="home-donate home-invite" id="homeInviteBtn" title="친구 초대 · 친구가 가입하면 +300 크레딧"><svg class="ico sm" aria-hidden="true" focusable="false"><use href="#i-gift"></use></svg><span>친구 초대</span><em class="inv-badge" aria-label="+300 크레딧"><svg class="ico" aria-hidden="true" focusable="false"><use href="#i-gem"></use></svg>+300</em></button>
           <a class="home-donate home-maker" id="homeMakerBtn" href="https://brand.naver.com/65ppa" target="_blank" rel="noopener noreferrer" title="육오빠 쇼핑몰 (brand.naver.com/65ppa)"><svg class="ico sm" aria-hidden="true" focusable="false"><use href="#i-gift"></use></svg><span>육오빠 쇼핑몰</span></a>
-          <a class="home-donate home-openchat" id="homeOpenchatBtn" href="https://open.kakao.com/o/gKRDFaYi" target="_blank" rel="noopener noreferrer" title="끼리맘 카카오톡 오픈채팅방"><svg class="ico sm" aria-hidden="true" focusable="false"><use href="#i-chat"></use></svg><span>오픈채팅</span></a>
+          <a class="home-donate" id="homeOpenchatBtn" href="https://open.kakao.com/o/gKRDFaYi" target="_blank" rel="noopener noreferrer" title="끼리맘 카카오톡 오픈채팅방"><svg class="ico sm" aria-hidden="true" focusable="false"><use href="#i-chat"></use></svg><span>오픈채팅</span></a>
           <button type="button" class="home-donate home-feedback" id="homeFeedbackBtn" title="불편한 점·아이디어 보내기"><svg class="ico sm" aria-hidden="true" focusable="false"><use href="#i-chat"></use></svg><span>의견 보내기</span></button>
           <button type="button" class="home-donate" id="homeInstallBtn" title="홈 화면에 추가 · 즐겨찾기"><svg class="ico sm" aria-hidden="true" focusable="false"><use href="#i-star"></use></svg><span>홈 화면에 추가</span></button>
         </div>
