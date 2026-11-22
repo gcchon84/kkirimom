@@ -3232,7 +3232,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261122-2046-45ea721d";
+var APP_BUILD_VER = "20261122-2100-71261007";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -6655,7 +6655,8 @@ function hostWaitStart(ep) {
   });
 }
 async function maybeWaitHost(room, ag, phase, ep) {
-  if (!run.moderator || !sameName(ag.name, run.moderator)) return true;
+  /* run.moderator 는 AI id(rtSetMod) — 이름으로도 받아 준다 */
+  if (!run.moderator || !(sameName(ag.id, run.moderator) || sameName(ag.name, run.moderator))) return true;
   if (String(phase) === "converge") return true;            /* 마무리 턴은 묻지 않고 정리한다 */
   if (run.hostNoPause) return true;                          /* 이미 한 번 건너뛴 토론 */
   if (run.hostAnsweredAt && Date.now() - run.hostAnsweredAt < 8000) return true;
