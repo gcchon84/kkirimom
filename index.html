@@ -685,7 +685,7 @@
   @media (max-width:900px){ .home-foot .home-invite{grid-column:1 / -1} }
   /* 🎁 친구 초대 — 서비스를 소개하며 내 초대 링크를 보내는 버튼 */
   .home-donate.home-invite{border-style:solid;border-color:#FFC7D2;background:var(--brand-tint);color:#C94B66}
-  .home-donate.home-invite:hover{border-color:#FFA4B6;color:#D02B4C;background:#FFE6EB}
+  .home-donate.home-invite:hover{border-color:#FFA4B6;color:#D02B4C;background:#EDE6FF}
   /* 💎 +300 초대 보상 배지 — 버튼 한 줄 안에 보석 아이콘과 함께 (2026-11-21) */
   .inv-badge{display:inline-flex;align-items:center;gap:2px;flex:0 0 auto;font-style:normal;font-size:9.5px;font-weight:900;line-height:1.5;letter-spacing:-.02em;white-space:nowrap;padding:1px 6px;border-radius:999px}
   .inv-badge .ico{width:10px;height:10px;--ico-fill:rgba(232,106,133,.18);color:#C94B66}
@@ -1715,7 +1715,7 @@
   .inv-seg button{border:0;background:transparent;border-radius:10px;padding:9px 2px;cursor:pointer;color:#745862;font-weight:900;font-size:11.5px;letter-spacing:-.02em;display:flex;align-items:center;justify-content:center;gap:4px;line-height:1.2;font-family:inherit}
   .inv-seg button[aria-pressed="true"]{background:#fff;color:#50394A;box-shadow:0 2px 6px rgba(140,86,104,.14)}
   .inv-seg button b{display:inline-flex;align-items:center;font-weight:900;letter-spacing:-.02em}
-  .mine-quick{margin-top:12px;padding:10px 11px;border:1px solid #FFE6EB;background:#FFF9FA;border-radius:12px}
+  .mine-quick{margin-top:12px;padding:10px 11px;border:1px solid #EDE6FF;background:#FFF9FA;border-radius:12px}
   .mine-quick .mine-quick-lead{margin:8px 0 0;font-size:12px;font-weight:600;color:var(--muted-2);letter-spacing:-.01em;line-height:1.55;text-align:center}
   .mine-quick-row{display:flex;gap:7px;flex-wrap:wrap}
   /* 두 보라 버튼(초대 지시문+링크 복사 / 내 AI 빠른 초대)은 같은 크기·굵기·여백으로 — 지용 님 지시(2026-11-21) */
@@ -2075,7 +2075,7 @@
     width:46px;height:46px;flex:0 0 46px;border-radius:14px;
     background:#FFF2F5;border-color:#F6CDD5;color:#993347;
   }
-  .home-head #homeMenuBtn:hover,.room-head #menuBtn:hover{background:#FFE6EB;border-color:#F1B3BF;color:#802537}
+  .home-head #homeMenuBtn:hover,.room-head #menuBtn:hover{background:#EDE6FF;border-color:#F1B3BF;color:#802537}
   .home-head #homeMenuBtn:active,.room-head #menuBtn:active{background:#FFE0E6}
   .home-head #homeMenuBtn .ico,.room-head #menuBtn .ico{width:25px;height:25px;stroke-width:2.2;vertical-align:0}
   @media (max-width:900px){
@@ -3301,7 +3301,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261123-0029-65904afc";
+var APP_BUILD_VER = "20261123-0045-abcc2689";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -4318,9 +4318,38 @@ function isExtAiName(name) {
   if (isRoomAiName(r, n)) { noteRoomAi(r.id, n); return true; }
   return !!(roomAiSeen[r.id] && roomAiSeen[r.id][n.toLowerCase()]);
 }
-/* 외부 AI 아바타 — 끼리맘 AI와 같은 박스 없는 캐릭터(.avatar.char) */
+/* 외부 AI(내 AI 비서) 이름별 색 — 2026-11-23 지용 님
+   “외부 AI 이모지가 다 똑같이 생긴 건 아니잖아?” → 같은 헤드셋 캐릭터에 이름마다 다른 파스텔 색.
+   채움(--cd)은 연한 파스텔, 선(color)은 같은 계열의 진한 색. 첨부·말풍선·참여 칩이 모두 이 표 하나만 본다.
+   배열 순서: 이름 해시((hash>>1)%6)가 0~5로 흩어질 때 자주 보는 네 이름이 서로 다른 색이 되도록 맞췄다
+   — 피크리 5(민트) · 키리니 4(하늘) · 뮤우즈 3(살구) · 뿌우이 2(레몬).
+   이름을 넣거나 빼면 이웃 색이 바뀌니 네 이름으로 다시 확인할 것. */
+var EXTAI_LOOKS = [
+  { n: "로즈", f: "#FFE0EA", s: "#AC3A5E" },
+  { n: "라벤더", f: "#EDE6FF", s: "#6A4FBF" },
+  { n: "레몬", f: "#FFF2C9", s: "#8A6A12" },
+  { n: "살구", f: "#FFE7D6", s: "#A9582C" },
+  { n: "하늘", f: "#DCEBFF", s: "#2B62A8" },
+  { n: "민트", f: "#D8F5EE", s: "#147A68" }
+];
+function extAiLook(name) {
+  var s = String(name == null ? "" : name).trim().toLowerCase();
+  return EXTAI_LOOKS[(hash(s) >> 1) % EXTAI_LOOKS.length];
+}
+/* 캐릭터 아바타용 인라인 색 — .avatar.char.ext 기본색(민트)을 이름별 색으로 덮는다 */
+function extAiStyle(name) {
+  var lk = extAiLook(name);
+  return 'style="color:' + lk.s + ";--c:" + lk.s + ";--cd:" + lk.f + ";--cf:" + hexRgba(lk.s, .2) + '"';
+}
+/* 참여 칩·목록의 작은 헤드셋 아이콘 — 아바타와 같은 이름별 색 */
+function extAiIcoHtml(name, cls) {
+  var lk = extAiLook(name);
+  return '<svg class="ico' + (cls ? " " + cls : "") + '" aria-hidden="true" focusable="false" style="--ico-fill:' +
+    lk.f + ";color:" + lk.s + '"><use href="#i-av-extai"></use></svg>';
+}
+/* 외부 AI 아바타 — 끼리맘 AI와 같은 박스 없는 캐릭터(.avatar.char) + 이름별 색 */
 function extAiAvatarHtml(name, size) {
-  return '<span class="avatar char ext ' + (size || "md") + '" title="' + esc(name || "AI") +
+  return '<span class="avatar char ext ' + (size || "md") + '" ' + extAiStyle(name) + ' title="' + esc(name || "AI") +
     '" aria-hidden="true">' + icoHtml("av-extai") + "</span>";
 }
 /* 사람 아바타 — 첫 글자 대신 얼굴/동물/별 픽토그램 */
@@ -5040,8 +5069,10 @@ function msgHtml(m) {
         '<div class="meta"><time>' + esc(timeLabel(m.at)) + "</time></div></div></div>";
     }
     var extAi = !!(m.relay || isExtAiName(m.name));
+    /* 외부 AI 이름줄도 그 AI의 색 — 아바타·참여 칩과 같은 색 하나 */
+    var whoStyle = extAi ? ' style="color:' + extAiLook(m.name).s + '"' : "";
     return '<div class="msg person' + (extAi ? " extai" : "") + '">' + (extAi ? extAiAvatarHtml(m.name) : personAvatarHtml(m.name)) +
-      '<div class="body"><div class="who">' + esc(m.name || "참가자") + "<em>" + (extAi ? "AI" : "참가자") + "</em></div>" +
+      '<div class="body"><div class="who"' + whoStyle + '>' + esc(m.name || "참가자") + "<em>" + (extAi ? "AI" : "참가자") + "</em></div>" +
       '<div class="bubble">' + fmtText(m.text) + "</div>" +
       '<div class="meta"><time>' + esc(timeLabel(m.at)) + "</time></div></div></div>";
   }
@@ -5136,7 +5167,9 @@ function typingStop(id) {
 function typingHtml(id) {
   var a = state.agents[id];
   if (!a) return "";
-  return '<div class="typing">' + avatarHtml(id) +
+  /* tint=true — 올라간 말풍선(msgHtml)과 똑같은 색. 예전엔 여기만 tint 가 없어
+     작성 중에는 AI 고유색, 글이 올라가면 보라(끼리맘 AI)·민트(내 AI)로 색이 바뀌었다(2026-11-23 지용 님 제보). */
+  return '<div class="typing">' + avatarHtml(id, null, true) +
     '<div class="bubble">' + esc(a.name) + ' 답장 작성 중<span class="dots"><i></i><i></i><i></i></span>' +
     cutBtnHtml("ai", id) + '</div></div>';
 }
@@ -5580,14 +5613,14 @@ function renderPeople() {
   if (isRoomOwner(r)) h += '<span class="pb-chip owner" title="이 방 방장 · 끼리맘 AI와 토론은 방장이 시작해요">' + icoHtml("crown", "xs") + " 방장</span>";
   else if (r.hostName) h += '<span class="pb-chip owner" title="이 방을 만든 방장">' + icoHtml("crown", "xs") + " " + esc(r.hostName) + "</span>";
   /* 나부터 — 방에 들어와 있으면 늘 보인다(사이드바 접속 현황을 없앤 뒤 유일한 실시간 표시) */
-  h += '<span class="pb-chip ' + (selfIsAI() ? "myai" : "me people") + '" title="나' + (selfIsAI() ? " · AI로 접속" : "") + (isAutoNick(nick()) ? "" : " · " + esc(nick())) + '">' + (selfIsAI() ? icoHtml("av-extai", "xs extx") : '<i class="pb-dot" aria-hidden="true" style="--c:' + peopleLook(nick()).c + '"></i>') + esc(selfLabel()) + "</span>";
+  h += '<span class="pb-chip ' + (selfIsAI() ? "myai" : "me people") + '" title="나' + (selfIsAI() ? " · AI로 접속" : "") + (isAutoNick(nick()) ? "" : " · " + esc(nick())) + '">' + (selfIsAI() ? extAiIcoHtml(nick(), "xs extx") : '<i class="pb-dot" aria-hidden="true" style="--c:' + peopleLook(nick()).c + '"></i>') + esc(selfLabel()) + "</span>";
   onlinePeople().forEach(function (n) {
     var isAI = isRoomAiName(r, n);
     /* 이름을 아직 안 바꾼 AI(참가자1…)는 ‘AI 1’로 보여 사람 칩과 섞이지 않게 한다 */
     var shown = isAI && isAutoNick(n) ? (nickNum(n) ? "AI " + nickNum(n) : "AI") : n;
-    /* 사람은 회색 캡슐 + 접속 점, 외부 AI는 민트 캐릭터 — 칩 틀은 그대로, 아이콘으로만 가른다 */
+    /* 사람은 회색 캡슐 + 접속 점, 외부 AI는 헤드셋 캐릭터 — 이름마다 같은 색(말풍선·아바타와 동일) */
     h += isAI
-      ? '<span class="pb-chip myai" title="외부 AI · 접속 중">' + icoHtml("av-extai", "xs extx") + esc(shown) + "</span>"
+      ? '<span class="pb-chip myai" title="외부 AI · 접속 중">' + extAiIcoHtml(n, "xs extx") + esc(shown) + "</span>"
       : '<span class="pb-chip people" title="지금 접속 중인 참가자"><i class="pb-dot" aria-hidden="true" style="--c:' + peopleLook(n).c + '"></i>' + esc(n) + "</span>";
   });
   r.members.forEach(function (id) {
@@ -9325,7 +9358,7 @@ function renderRfParticipants() {
       else if (isAI) mark = '<button type="button" class="ppl-btn on" data-mark-ai="' + esc(n) + '">AI 표시 해제</button>';
       else mark = '<button type="button" class="ppl-btn" data-mark-ai="' + esc(n) + '">AI로 표시</button>';
     }
-    h += '<div class="ppl-row"><span class="pn">' + (isAI ? icoHtml("av-extai", "xs extx") + " " : "") + esc(n) +
+    h += '<div class="ppl-row"><span class="pn">' + (isAI ? extAiIcoHtml(n, "xs extx") + " " : "") + esc(n) +
       "<em>" + (isAI ? "내 AI · 접속 중" : "사람 · 접속 중") + "</em></span>" + '<span class="pact">' + mark +
       (owner ? '<button type="button" class="ppl-btn danger" data-kick-person="' + esc(n) + '">내보내기</button>' : "") +
       "</span></div>";
