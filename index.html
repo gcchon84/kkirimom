@@ -12084,6 +12084,9 @@ async function ensureMembership(roomId) {
     var res = await db.client.rpc("kkiri_join_public_room", { p_room_id: roomId });
     if (res && res.error && String(res.error.code || "") !== "42501") {
       if (typeof console !== "undefined" && console.warn) console.warn("[kkiri] join:", res.error.message);
+    } else if (!(res && res.error) && !V3.myRoles[roomId]) {
+      /* 공개방 자동 참여가 끝났다 — 멤버십이 생겼으니 dbApply 가 이 방을 목록에서 빼지 않게 표시해 둔다 */
+      V3.myRoles[roomId] = "guest";
     }
   } catch (e) {}
 }
