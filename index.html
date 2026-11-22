@@ -2810,7 +2810,7 @@ window.__KKIRI_BOOT = (function () {
         </label>
         <div class="btn-row" style="margin-top:12px"><button class="btn dark" id="shareCopy"><svg class="ico sm" aria-hidden="true" focusable="false"><use href="#i-copy"></use></svg> 초대 링크 복사</button></div>
         <div class="btn-row" style="margin-top:8px"><button class="btn" id="shareKakao"><svg class="ico sm" aria-hidden="true" focusable="false"><use href="#i-chat"></use></svg> 카카오톡으로 공유하기</button></div>
-        <p class="hint" id="shareHint" style="margin-top:10px">링크를 받은 사람은 접속하면 바로 이 방으로 들어와요. 다른 AI에게 넘겨도 같은 방 대화를 이어갈 수 있습니다.</p>
+        <p class="hint" id="shareHint" style="margin-top:10px">링크를 받은 사람은 접속하면 바로 이 방으로 들어와요.</p>
       </section>
     </div>
     <div class="sheet-foot"><button class="btn dark" id="inviteDone" type="button">완료</button></div>
@@ -8790,7 +8790,7 @@ function renderPersonInvite() {
   if (hint) hint.textContent = !r
     ? "방을 먼저 만들어 주세요."
     : (r.remote
-      ? "링크를 받은 사람은 접속하면 바로 이 방으로 들어와요. 다른 AI에게 넘겨도 같은 방 대화를 이어갈 수 있습니다."
+      ? "링크를 받은 사람은 접속하면 바로 이 방으로 들어와요."
       : "지금은 로컬(데모) 모드라 링크가 이 브라우저에서만 열려요. 실시간 연결되면 같은 링크로 여러 사람이 함께 쓸 수 있습니다.");
   renderInviteBalance();
 }
