@@ -2740,7 +2740,7 @@ window.__KKIRI_BOOT = (function () {
         <button type="button" role="tab" data-tab="mine" aria-pressed="false" aria-selected="false"><b><svg class="ico sm" aria-hidden="true" focusable="false"><use href="#i-spark"></use></svg> 내 AI</b></button>
         <button type="button" role="tab" data-tab="person" aria-pressed="false" aria-selected="false"><b><svg class="ico sm" aria-hidden="true" focusable="false"><use href="#i-user"></use></svg> 사람</b></button>
       </div>
-      <p class="inv-cap-note" id="invCapNote">한 방에 AI 최대 8명 · 전체 최대 12명까지 참여할 수 있어요.</p>
+      <p class="inv-cap-note" id="invCapNote">한 방에 AI 최대 8명 · 전체 12명까지 참여할 수 있어요.</p>
 
       <!-- ---------- 탭 1 · 끼리맘 AI ---------- -->
       <section id="aiTabKkiri" role="tabpanel" aria-label="끼리맘 AI">
@@ -3026,7 +3026,7 @@ window.__KKIRI_BOOT = (function () {
         <b>무제한 무료예요</b>
         <p>끼리맘 AI·사람·내 AI 대화를 모두 무료로 마음껏 쓸 수 있어요. 따로 결제하거나 충전할 필요가 없어요.</p>
         <p class="cfn-fair">모두가 쾌적하게 쓸 수 있도록, 짧은 시간이나 하루에 지나치게 많은 호출은 일시 제한될 수 있어요.</p>
-        <p class="cfn-fair">방당 AI 최대 8명 · 전체 최대 12명까지 함께할 수 있어요.</p>
+        <p class="cfn-fair">방당 AI 최대 8명 · 전체 12명까지 함께할 수 있어요.</p>
       </div>
       <div class="panel-card paid-only">
         <div class="row"><div class="k">남은 크레딧<small id="creditPlan">매일 300크레딧 무료</small></div><span class="pill" id="creditNow">0</span></div>
@@ -3222,7 +3222,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261122-1917-15dfb850";
+var APP_BUILD_VER = "20261122-1934-a7080de3";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -10447,7 +10447,9 @@ async function dbCreateRoom(room, members) {
     dbSubscribe(room.id);
     if (room.messages && room.messages.length) dbSendMessage(room.messages[room.messages.length - 1]);
     renderAll();
-    toast("방을 만들었어요 · 초대 링크를 복사해 공유하세요");
+    /* 2026-11-22 지용 님 — 방을 만들자마자 ‘초대 링크를 복사해 공유하세요’ 토스트가 떠서
+       빈 방 안내(‘방이 개설되었습니다. AI나 사람을 초대해 대화를 시작해 보세요’)를 가렸다.
+       방 생성 알림은 submitRoomForm 의 ‘방을 만들었어요’ 하나만 남긴다. */
   } catch (e) { dbToast("방을 서버에 만들지 못했어요 · 네트워크"); }
 }
 async function dbUpdateRoom(r, members) {
@@ -10996,7 +10998,7 @@ function guestRoomBlocked() {
 /* =========================================================
    방 인원 제한 (2026-11-22 확정)
    ---------------------------------------------------------
-   방당 AI 최대 8명(끼리맘 AI + 내 AI + 외부 AI) · 사람+AI 전체 최대 12명
+   방당 AI 최대 8명(끼리맘 AI + 내 AI + 외부 AI) · 사람+AI 전체 12명
    ========================================================= */
 var ROOM_AI_MAX = 8;
 var ROOM_PEOPLE_MAX = 12;
@@ -11603,7 +11605,7 @@ async function afterSignIn(user) {
         setTimeout(function () {
           askConfirm({
             title: why,
-            body: "이 방은 한 방에 AI 최대 " + ROOM_AI_MAX + "명 · 전체 최대 " + ROOM_PEOPLE_MAX + "명까지 함께할 수 있어요.",
+            body: "이 방은 한 방에 AI 최대 " + ROOM_AI_MAX + "명 · 전체 " + ROOM_PEOPLE_MAX + "명까지 함께할 수 있어요.",
             note: "초대한 분께 자리를 비우거나 새 방을 만들어 달라고 알려 주세요.",
             okText: "확인", okClass: "dark"
           });
