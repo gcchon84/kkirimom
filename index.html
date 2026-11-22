@@ -343,6 +343,12 @@
   .avatar.char.sm .ico{width:20px;height:20px}
   .avatar.char.md .ico{width:26px;height:26px}
   .avatar.char.lg .ico{width:34px;height:34px}
+  /* 2026-11-22 지용 님 — 초대된 외부 AI(내 AI 비서 · &ai=1)는 끼리맘 AI와 같은 캐릭터 패밀리지만
+     민트 몸통 + 짙은 청록 선 + 헤드셋(이어패드·마이크)으로 결을 살짝 가른다.
+     끼리맘(코랄)에서는 이 민트가 오히려 ‘외부 AI’ 표시로 또렷하게 남는다. */
+  .avatar.char.ext{color:#147A68;--c:#147A68;--cd:#D8F5EE;--cf:rgba(20,122,104,.20)}
+  .ico.extx{--ico-fill:#D8F5EE;color:#147A68}
+  .msg.extai .who{color:#12796B}
 
   /* ============ main ============ */
   .main{flex:1;min-width:0;display:flex;flex-direction:column;height:100vh;height:100dvh;background:#FFFCFB;position:relative}
@@ -2578,6 +2584,8 @@ window.__KKIRI_BOOT = (function () {
     <symbol id="i-av-moon" viewBox="0 0 24 24"><path style="fill:var(--ico-fill,#FFE3E8)" d="M12 3.7a7.95 7.95 0 0 1 7.95 7.95c0 4.45-3.56 7.45-7.95 7.45S4.05 16.1 4.05 11.65A7.95 7.95 0 0 1 12 3.7z"/><path d="M12 3.7a7.95 7.95 0 0 1 7.95 7.95c0 4.45-3.56 7.45-7.95 7.45S4.05 16.1 4.05 11.65A7.95 7.95 0 0 1 12 3.7z"/><circle style="fill:currentColor;stroke:none" cx="9.8" cy="10.1" r="1.45"/><circle style="fill:currentColor;stroke:none" cx="14.2" cy="10.1" r="1.45"/><path style="fill:#fff" d="M15.6 12.6a4 4 0 1 0 0 5.9 4.8 4.8 0 0 1 0-5.9z"/></symbol>
     <!-- 직접 만들기 — 커스텀 끼리맘 AI 전용 캐릭터(동글 몸통 + •• 눈 + 마법봉, 봉 끝에 반짝이) -->
     <symbol id="i-av-custom" viewBox="0 0 24 24"><path style="fill:var(--ico-fill,#FFE3E8)" d="M12 3.7a7.95 7.95 0 0 1 7.95 7.95c0 4.45-3.56 7.45-7.95 7.45S4.05 16.1 4.05 11.65A7.95 7.95 0 0 1 12 3.7z"/><path d="M12 3.7a7.95 7.95 0 0 1 7.95 7.95c0 4.45-3.56 7.45-7.95 7.45S4.05 16.1 4.05 11.65A7.95 7.95 0 0 1 12 3.7z"/><circle style="fill:currentColor;stroke:none" cx="9.8" cy="10.1" r="1.45"/><circle style="fill:currentColor;stroke:none" cx="14.2" cy="10.1" r="1.45"/><path style="fill:#fff" d="M13.9 18.3l.5-2.7 4.2-4.2 2.2 2.2-4.2 4.2z"/><path d="M17.3 10.3l2.2 2.2"/><path style="fill:#fff" d="M20.4 8.4l.55 1.45 1.45.55-1.45.55-.55 1.45-.55-1.45-1.45-.55 1.45-.55z"/></symbol>
+    <!-- 외부 AI(초대된 내 AI 비서 · &ai=1) — 끼리맘 AI와 같은 동글 몸통·눈에 헤드셋(이어패드·마이크)만 얹은 캐릭터 -->
+    <symbol id="i-av-extai" viewBox="0 0 24 24"><path style="fill:var(--ico-fill,#D8F5EE)" d="M12 3.7a7.95 7.95 0 0 1 7.95 7.95c0 4.45-3.56 7.45-7.95 7.45S4.05 16.1 4.05 11.65A7.95 7.95 0 0 1 12 3.7z"/><path d="M12 3.7a7.95 7.95 0 0 1 7.95 7.95c0 4.45-3.56 7.45-7.95 7.45S4.05 16.1 4.05 11.65A7.95 7.95 0 0 1 12 3.7z"/><circle style="fill:currentColor;stroke:none" cx="9.8" cy="10.1" r="1.45"/><circle style="fill:currentColor;stroke:none" cx="14.2" cy="10.1" r="1.45"/><rect x="2.4" y="7.2" width="3.7" height="6.6" rx="1.85" style="fill:#fff;stroke-width:1.35"/><rect x="17.9" y="7.2" width="3.7" height="6.6" rx="1.85" style="fill:#fff;stroke-width:1.35"/><path d="M19.6 13.2c-.4 1.9-1.7 3.2-3.6 3.7" style="stroke-width:1.6"/><circle style="fill:currentColor;stroke:none" cx="15.2" cy="17.1" r="1.15"/></symbol>
   <!-- AV_AVATAR_ICONS_END -->
   </defs>
 </svg>
@@ -3285,7 +3293,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261122-2332-b58f2afa";
+var APP_BUILD_VER = "20261123-0003-47a267f8";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -4255,6 +4263,57 @@ function peopleLook(name) {
 function avatarStyle(c) {
   return 'style="--c:' + esc(c) + ";--ct:" + hexRgba(c, .13) + ";--cf:" + hexRgba(c, .24) + ";--cd:" + hexRgba(c, .32) + '"';
 }
+/* =========================================================
+   외부 AI(내 AI 비서 · &ai=1) 전용 캐릭터
+   ---------------------------------------------------------
+   초대 링크·‘내 AI 비서’로 들어온 외부 AI는 state.agents 가 아니라 ‘접속자’라서
+   지금까지 사람 아바타(얼굴·고양이 픽토그램 + 파스텔 박스)로 그려졌다.
+   끼리맘 AI(박스 없는 동글 캐릭터)와 결이 너무 달라 한눈에 구분되지 않는다는 지적(2026-11-22 지용 님)에
+   같은 패밀리의 민트 헤드셋 캐릭터를 따로 둔다.
+   ========================================================= */
+var roomAiSeen = {};   /* 방 id → { 소문자 이름: 1 } — 외부 AI로 확인된 이름(나간 뒤에도 말풍선이 사람으로 바뀌지 않게) */
+var EXTAI_SEEN_KEY = "kkiri.extai.v1";
+/* 이 기기에서 ‘외부 AI였던 이름’을 방별로 기억한다 — 새로고침·재방문 뒤에도 옛 말풍선이 사람으로 돌아가지 않게 */
+function loadExtAiSeen() {
+  try {
+    var j = JSON.parse(localStorage.getItem(EXTAI_SEEN_KEY) || "{}");
+    if (j && typeof j === "object") roomAiSeen = j;
+  } catch (e) {}
+}
+function saveExtAiSeen() {
+  try {
+    var ids = Object.keys(roomAiSeen);
+    if (ids.length > 30) {            /* 최근 30방만 남긴다 */
+      var keep = {};
+      ids.slice(-30).forEach(function (id) { keep[id] = roomAiSeen[id]; });
+      roomAiSeen = keep;
+    }
+    localStorage.setItem(EXTAI_SEEN_KEY, JSON.stringify(roomAiSeen));
+  } catch (e) {}
+}
+function noteRoomAi(roomId, name) {
+  var n = String(name == null ? "" : name).trim().toLowerCase();
+  if (!roomId || !n) return;
+  var box = roomAiSeen[roomId] || (roomAiSeen[roomId] = {});
+  if (box[n]) return;
+  box[n] = 1;
+  saveExtAiSeen();
+}
+loadExtAiSeen();
+/* 이 이름이 이 방의 외부 AI인가 — 접속 표시(ai)·방 설정의 ‘AI로 표시’·이 화면에서 확인한 이름 */
+function isExtAiName(name) {
+  var r = activeRoom();
+  var n = String(name == null ? "" : name).trim();
+  if (!r || !n) return false;
+  if (sameName(n, nick())) return false;
+  if (isRoomAiName(r, n)) { noteRoomAi(r.id, n); return true; }
+  return !!(roomAiSeen[r.id] && roomAiSeen[r.id][n.toLowerCase()]);
+}
+/* 외부 AI 아바타 — 끼리맘 AI와 같은 박스 없는 캐릭터(.avatar.char) */
+function extAiAvatarHtml(name, size) {
+  return '<span class="avatar char ext ' + (size || "md") + '" title="' + esc(name || "AI") +
+    '" aria-hidden="true">' + icoHtml("av-extai") + "</span>";
+}
 /* 사람 아바타 — 첫 글자 대신 얼굴/동물/별 픽토그램 */
 function personAvatarHtml(name, size) {
   var lk = peopleLook(name);
@@ -4971,8 +5030,9 @@ function msgHtml(m) {
         '<div class="bubble">' + fmtText(m.text) + "</div>" +
         '<div class="meta"><time>' + esc(timeLabel(m.at)) + "</time></div></div></div>";
     }
-    return '<div class="msg person">' + personAvatarHtml(m.name) +
-      '<div class="body"><div class="who">' + esc(m.name || "참가자") + "<em>" + (m.relay ? "AI" : "참가자") + "</em></div>" +
+    var extAi = !!(m.relay || isExtAiName(m.name));
+    return '<div class="msg person' + (extAi ? " extai" : "") + '">' + (extAi ? extAiAvatarHtml(m.name) : personAvatarHtml(m.name)) +
+      '<div class="body"><div class="who">' + esc(m.name || "참가자") + "<em>" + (extAi ? "AI" : "참가자") + "</em></div>" +
       '<div class="bubble">' + fmtText(m.text) + "</div>" +
       '<div class="meta"><time>' + esc(timeLabel(m.at)) + "</time></div></div></div>";
   }
@@ -5043,7 +5103,7 @@ function typingHtml(id) {
 }
 /* 내 AI 차례 — 호명을 올리고 답을 기다리는 동안 보여 준다 */
 function relayTypingHtml(name) {
-  return '<div class="typing relay">' + personAvatarHtml(name) +
+  return '<div class="typing relay">' + (isExtAiName(name) ? extAiAvatarHtml(name) : personAvatarHtml(name)) +
     '<div class="bubble">' + esc(name) + ' 답을 기다리는 중<span class="dots"><i></i><i></i><i></i></span></div></div>';
 }
 
@@ -5432,14 +5492,14 @@ function renderPeople() {
   if (isRoomOwner(r)) h += '<span class="pb-chip owner" title="이 방 방장 · 끼리맘 AI와 토론은 방장이 시작해요">' + icoHtml("crown", "xs") + " 방장</span>";
   else if (r.hostName) h += '<span class="pb-chip owner" title="이 방을 만든 방장">' + icoHtml("crown", "xs") + " " + esc(r.hostName) + "</span>";
   /* 나부터 — 방에 들어와 있으면 늘 보인다(사이드바 접속 현황을 없앤 뒤 유일한 실시간 표시) */
-  h += '<span class="pb-chip ' + (selfIsAI() ? "myai" : "me people") + '" title="나' + (selfIsAI() ? " · AI로 접속" : "") + (isAutoNick(nick()) ? "" : " · " + esc(nick())) + '">' + '<i class="pb-dot" aria-hidden="true" style="--c:' + (selfIsAI() ? "#10B981" : peopleLook(nick()).c) + '"></i>' + esc(selfLabel()) + "</span>";
+  h += '<span class="pb-chip ' + (selfIsAI() ? "myai" : "me people") + '" title="나' + (selfIsAI() ? " · AI로 접속" : "") + (isAutoNick(nick()) ? "" : " · " + esc(nick())) + '">' + (selfIsAI() ? icoHtml("av-extai", "xs extx") : '<i class="pb-dot" aria-hidden="true" style="--c:' + peopleLook(nick()).c + '"></i>') + esc(selfLabel()) + "</span>";
   onlinePeople().forEach(function (n) {
     var isAI = isRoomAiName(r, n);
     /* 이름을 아직 안 바꾼 AI(참가자1…)는 ‘AI 1’로 보여 사람 칩과 섞이지 않게 한다 */
     var shown = isAI && isAutoNick(n) ? (nickNum(n) ? "AI " + nickNum(n) : "AI") : n;
-    /* 사람은 회색 캡슐 + 접속 점, 내 AI는 민트 틴트 + 듀오톤 로봇 아이콘 */
+    /* 사람은 회색 캡슐 + 접속 점, 외부 AI는 민트 캐릭터 — 칩 틀은 그대로, 아이콘으로만 가른다 */
     h += isAI
-      ? '<span class="pb-chip myai" title="내 AI · 접속 중"><i class="pb-dot" aria-hidden="true" style="--c:#10B981"></i>' + esc(shown) + "</span>"
+      ? '<span class="pb-chip myai" title="외부 AI · 접속 중">' + icoHtml("av-extai", "xs extx") + esc(shown) + "</span>"
       : '<span class="pb-chip people" title="지금 접속 중인 참가자"><i class="pb-dot" aria-hidden="true" style="--c:' + peopleLook(n).c + '"></i>' + esc(n) + "</span>";
   });
   r.members.forEach(function (id) {
@@ -6116,11 +6176,13 @@ async function loopRoundtable(room, ep) {
           continue;
         }
         if (ep !== run.epoch) return;
-        await relayTurn(step, ep);
+        var relaySaid = await relayTurn(step, ep);
         if (ep !== run.epoch) return;
         autoCheckpointHit();                 /* 다음 차례부터 이어 갈 수 있게 지점을 남긴다 */
         if (budgetExceeded(room)) { endRun("budget", ep); return; }
         if (loopDetected()) { endRun("loop", ep); return; }
+        /* 외부 AI가 방장에게 직접 확인 질문을 던졌으면 사회자와 똑같이 답변을 기다린다(8.4c-2) */
+        if (!(await maybeWaitHostRelay(room, step.nick, step.phase, ep, relaySaid))) return;
         if (!(await readingPause(ep, rand(1200, 1800)))) return;
         continue;
       }
@@ -6200,16 +6262,17 @@ async function relayTurn(step, ep) {
     save();
     renderTimeline(true);
     renderSidebar();
-    if (relayEarly) finishEarly(step.nick);
-    return;
+    if (relayEarly) { finishEarly(step.nick); return reply.text; }
+    return reply.text;
   }
   if (run.relayLeft) {                 /* 기다리는 사이 정말 나갔다 — 건너뛴 이유를 정확히 알린다 */
     run.relayLeft = false;
     addSystem("‘" + step.nick + "’ 님이 방을 나가 이 차례는 건너뛰었어요", "warn");
-    return;
+    return "";
   }
   addSystem("‘" + step.nick + "’ 응답이 없어 다음 차례로 넘어갔어요 · " +
     Math.round(waitMs / 1000) + "초 기다렸어요", "warn");
+  return "";
 }
 /* 그 이름의 새 말이 올라올 때까지 기다린다 — 일시정지 중에는 시간을 세지 않는다. */
 function waitRelayReply(name, known, ep, ms) {
@@ -6774,6 +6837,80 @@ async function maybeWaitHost(room, ag, phase, ep) {
   if (run.hostAnsweredAt && Date.now() - run.hostAnsweredAt < 8000) return true;
   var said = agentSaidLast(room, ag.id);
   if (!said || said.indexOf("?") < 0) return true;           /* 확인 질문이 아니면 그냥 진행 */
+  var how = await hostWaitStart(ep);
+  if (ep !== run.epoch) return false;
+  if (how === "answer") { if (!(await readingPause(ep, 1000))) return false; }
+  return true;
+}
+
+/* =========================================================
+   8.4c-2 외부 AI(내 AI 비서 · &ai=1)의 확인 질문 → 방장 답변 대기 — 2026-11-22 지용 님 확정
+   ---------------------------------------------------------
+   방장 답변을 기다리는 흐름(waiting_host)을 끼리맘 AI 사회자뿐 아니라 외부 AI 발언에도 똑같이 건다.
+   다만 외부 AI는 말투가 자유로워 물음표만으로 멈추면 토론이 자주 끊긴다. 그래서 두 조건을 모두 볼 때만 멈춘다.
+     ① 물음표(?)가 있는 문장이고
+     ② 방장을 부르거나(닉네임·‘방장’) 방장의 선택·확인을 직접 요청하는 말(어느 쪽·골라 줘·예산·취향·날짜 …)
+   ‘~아닐까요?’ 같은 수사적 반문과, 다른 AI에게 묻는 @멘션 질문은 제외한다.
+   방장이 답하거나 [▶ 그냥 넘어가기]·45초 무응답이면 기존 8.4c 와 같은 방식으로 이어진다.
+   ========================================================= */
+var HOST_ASK_WORDS = [
+  "어느 쪽", "어느쪽", "어느 거", "어느거", "어느 게", "어느게", "어떤 쪽", "어떤쪽",
+  "뭐가 더", "무엇이 더", "뭐가 좋", "무엇이 좋", "어떤 게 좋", "어떤게 좋",
+  "어때", "어떠세요", "어떨까요", "어떻게 할까", "골라", "선택해", "정해", "정해 줘",
+  "알려 줘", "알려줘", "알려 주세요", "알려주세요", "말해 줘", "말해줘", "말씀해",
+  "예산", "취향", "날짜", "일정", "언제", "며칠", "몇 명", "몇명", "개월", "선호"
+];
+var HOST_ASK_RHETORIC = /(않을까|아닐까|않나요|아니겠|그렇지 않|그쵸|그렇죠|맞죠|맞나요|생각하지 않|아닌가)\s*[?？]?\s*$/;
+/* 방장을 부르는 이름들 — 이 화면의 닉네임(방장 브라우저에서 도는 토론) · 방에 기록된 방장 이름 */
+function hostNickNames(r) {
+  var out = ["방장"];
+  [nick(), r && r.hostName, run && run.autoBy, autoHostName(r)].forEach(function (n) {
+    var s = String(n == null ? "" : n).trim();
+    if (s && out.indexOf(s) < 0) out.push(s);
+  });
+  return out;
+}
+/* 이 발언이 방장에게 직접 묻는 확인 질문인가 — 과잉 정지를 막기 위해 보수적으로 본다 */
+function asksHostChoice(text) {
+  var t = String(text == null ? "" : text);
+  if (!t || (t.indexOf("?") < 0 && t.indexOf("？") < 0)) return false;
+  var names = hostNickNames(activeRoom()).map(function (n) { return String(n).toLowerCase(); });
+  var saysHost = names.some(function (n) { return n && t.toLowerCase().indexOf(n) > -1; });
+  /* 물음표에서 끊어 문장 단위로 본다(줄바꿈·마침표도 경계) */
+  var sentences = [], cur = "";
+  for (var i = 0; i < t.length; i++) {
+    var ch = t.charAt(i);
+    cur += ch;
+    if (ch === "?" || ch === "？" || ch === "\n" || ch === "!" || ch === ".") { sentences.push(cur); cur = ""; }
+  }
+  if (cur) sentences.push(cur);
+  for (var s = 0; s < sentences.length; s++) {
+    var sen = sentences[s].trim();
+    if (sen.indexOf("?") < 0 && sen.indexOf("？") < 0) continue;
+    if (HOST_ASK_RHETORIC.test(sen)) continue;              /* 수사적 반문은 넘긴다 */
+    /* 다른 AI에게만 거는 @멘션 질문은 방장에게 묻는 말이 아니다 */
+    var at = sen.match(/@\s*([^\s,?？!]+)/g);
+    if (at && at.length) {
+      var toOther = at.some(function (m) {
+        var nm = m.replace(/^@\s*/, "").toLowerCase();
+        return names.indexOf(nm) < 0;
+      });
+      if (toOther && !saysHost) continue;
+    }
+    if (saysHost) return true;
+    for (var w = 0; w < HOST_ASK_WORDS.length; w++) {
+      if (sen.indexOf(HOST_ASK_WORDS[w]) > -1) return true;
+    }
+  }
+  return false;
+}
+/* 외부 AI 차례 뒤에 부른다 — 사회자 차례와 같은 대기/재개/건너뛰기 흐름을 그대로 쓴다 */
+async function maybeWaitHostRelay(room, nickName, phase, ep, said) {
+  if (String(phase) === "converge") return true;            /* 마무리 턴은 묻지 않고 정리한다 */
+  if (run.hostNoPause) return true;                          /* 이미 건너뛴 토론은 다시 멈추지 않는다 */
+  if (run.hostAnsweredAt && Date.now() - run.hostAnsweredAt < 8000) return true;
+  if (ep !== run.epoch) return true;
+  if (!asksHostChoice(said)) return true;
   var how = await hostWaitStart(ep);
   if (ep !== run.epoch) return false;
   if (how === "answer") { if (!(await readingPause(ep, 1000))) return false; }
@@ -9024,7 +9161,7 @@ function renderRfParticipants() {
       else if (isAI) mark = '<button type="button" class="ppl-btn on" data-mark-ai="' + esc(n) + '">AI 표시 해제</button>';
       else mark = '<button type="button" class="ppl-btn" data-mark-ai="' + esc(n) + '">AI로 표시</button>';
     }
-    h += '<div class="ppl-row"><span class="pn">' + (isAI ? icoHtml("bot", "xs") + " " : "") + esc(n) +
+    h += '<div class="ppl-row"><span class="pn">' + (isAI ? icoHtml("av-extai", "xs extx") + " " : "") + esc(n) +
       "<em>" + (isAI ? "내 AI · 접속 중" : "사람 · 접속 중") + "</em></span>" + '<span class="pact">' + mark +
       (owner ? '<button type="button" class="ppl-btn danger" data-kick-person="' + esc(n) + '">내보내기</button>' : "") +
       "</span></div>";
