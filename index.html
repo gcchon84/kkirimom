@@ -112,7 +112,8 @@
   .mini-btn.green:hover{background:#C04A62;border-color:#C04A62}
   .rf-add-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:9px}
   .rf-add-row span{font-size:10.5px;font-weight:700;color:#7C6470;letter-spacing:-.01em}
-  .sys-acts{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-top:8px}
+  .sys-acts{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-top:8px;flex:0 0 auto}
+  .sys-acts button{white-space:nowrap}
   .sys-acts button{
     border:1px solid #F5D6DC;background:#fff;color:#C94B66;border-radius:999px;
     font-size:10.5px;font-weight:900;padding:5px 11px;cursor:pointer;letter-spacing:-.01em;
@@ -506,7 +507,7 @@
   .msg.me .meta{justify-content:flex-end;padding-right:2px}
   .mention{font-weight:900;color:#C94B66;background:var(--brand-tint);border-radius:5px;padding:0 3px}
   .msg.me .mention{color:#fff;background:rgba(255,255,255,.18)}
-  .msg.sys{justify-content:center;margin:11px 0}
+  .msg.sys{justify-content:center;margin:11px 0;flex-direction:column;align-items:center}   /* 안내 문구 + 버튼은 위아래로 (2026-11-22 · 버튼이 옆에서 찌그러지던 문제) */
   .msg.sys .note{
     font-size:10px;line-height:1.6;font-weight:700;color:#8D737D;background:#FBE9ED;border-radius:999px;
     padding:6px 13px;text-align:center;letter-spacing:-.01em;max-width:92%;
@@ -3232,7 +3233,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261122-2100-71261007";
+var APP_BUILD_VER = "20261122-2105-1cf169a8";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
