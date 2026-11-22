@@ -894,6 +894,23 @@
     transition:opacity .2s ease,transform .2s ease;max-width:92vw;text-align:center;word-break:keep-all;
   }
   .toast.show{opacity:1;transform:translate(-50%,0)}
+  /* ============ 새 버전 안내 바 (2026-11-22) — 강제 새로고침 대신 띄운다 ============ */
+  .upd-bar{
+    position:fixed;left:8px;right:8px;top:calc(env(safe-area-inset-top,0px) + 8px);
+    width:fit-content;max-width:calc(100% - 16px);margin:0 auto;transform:translateY(-14px);
+    z-index:95;display:flex;align-items:center;gap:6px;
+    background:var(--panel);color:var(--ink);border:1px solid var(--line);
+    box-shadow:0 8px 22px rgba(58,39,49,.16);border-radius:999px;padding:7px 9px 7px 14px;
+    font-size:11.5px;font-weight:800;letter-spacing:-.01em;opacity:0;pointer-events:none;
+    transition:opacity .2s ease,transform .2s ease;
+  }
+  .upd-bar.show{opacity:1;transform:translateY(0);pointer-events:auto}
+  .upd-bar span{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .upd-bar button{
+    flex:0 0 auto;border:0;border-radius:999px;padding:6px 11px;font-size:11px;font-weight:900;
+    font-family:inherit;color:#fff;background:var(--brand);cursor:pointer;
+  }
+  .upd-bar .upd-x{background:transparent;color:var(--muted-2);padding:2px 4px;font-size:13px}
   .backdrop{position:fixed;inset:0;background:rgba(42,30,40,.5);z-index:35;opacity:0;transition:opacity .18s ease}
   .backdrop.show{opacity:1}
 
@@ -3186,11 +3203,26 @@ window.__KKIRI_BOOT = (function () {
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<!-- 새 버전 안내 바 — AI가 말하는 중이거나 쓰던 글이 있을 때만 뜬다 -->
+<div class="upd-bar" id="updBar" role="status" aria-live="polite" hidden>
+  <span id="updText">새 버전이 업데이트됐어요</span>
+  <button type="button" id="updGo">새로고침</button>
+  <button type="button" class="upd-x" id="updClose" aria-label="안내 닫기">✕</button>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" crossorigin="anonymous"></script>
 <script>
 (function () {
 "use strict";
+
+/* =========================================================
+   앱 빌드 버전 (2026-11-22 지용 님 요청)
+   ---------------------------------------------------------
+   배포할 때마다 이 값을 올리고(work/kkiri-v3/bump_version.py),
+   같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
+   돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
+   ========================================================= */
+var APP_BUILD_VER = "20261122-1905-3d432619";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -13381,6 +13413,7 @@ function onSend() {
   if (!t) { $("input").focus(); return; }
   /* 일반 채팅은 크레딧 상한과 무관하게 언제든 전송됩니다. 크레딧은 끼리맘 AI 호출에서만 봅니다. */
   addUserMessage(t);
+  try { appUpdHold(6); } catch (e) {}   /* 방금 보낸 말이 서버에 닿기 전엔 새 버전으로 다시 열지 않는다 */
   $("input").value = "";
   growInput();
   if (run.active) { toast("메시지는 올라갔어요 · AI가 말하는 중이라 답장은 이번에 건너봅니다"); return; }
@@ -14052,7 +14085,125 @@ function initInAppBar() {
 }
 
 /* =========================================================
-   20. 시작
+   20. 새 버전 자동 감지 (2026-11-22 지용 님 요청)
+   ---------------------------------------------------------
+   홈 화면 바로가기(PWA)는 안드로이드가 앱을 살려 두기 때문에, 다시 눌러도
+   새로 배포한 화면이 뜨지 않는다(예전 화면 그대로). 그래서 앱이 백그라운드에서
+   돌아올 때(visibilitychange · pageshow) version.json 을 확인해서
+   · 게이트·홈·빈 대화방이면         → 조용히 새 버전으로 다시 연다
+   · 쓰던 글이 있거나 AI가 말하는 중 → 강제로 새로고침하지 않고 위쪽에 안내 바를 띄운다
+   네트워크 오류·file:// 에서는 아무 것도 하지 않는다(앱 동작을 막지 않는다).
+   ========================================================= */
+var APP_UPDATE_CD = 30000;        /* 버전 확인 최소 간격 — 30초 */
+var APP_UPDATE_SNOOZE = 300000;   /* 안내 바를 닫으면 5분은 다시 묻지 않는다 */
+var APP_UPDATE_TRIES = 1;         /* 같은 버전으로 다시 열어 보는 횟수 상한(새로고침 고리 방지) */
+var appUpd = { at: 0, busy: false, v: "", shown: false, until: 0 };
+function appUpdBar() { return $("updBar"); }
+function appUpdHold(sec) {        /* 방금 보낸 메시지가 서버에 닿을 때까지는 다시 열지 않는다 */
+  var t = Date.now() + (Number(sec) || 6) * 1000;
+  if (t > appUpd.until) appUpd.until = t;
+}
+function appUpdShow(v) {
+  appUpd.v = v;
+  if (appUpd.shown) return;
+  var bar = appUpdBar();
+  if (!bar) return;
+  appUpd.shown = true;
+  var txt = $("updText");
+  if (txt) txt.textContent = "새 버전이 업데이트됐어요";
+  bar.hidden = false;
+  requestAnimationFrame(function () { bar.classList.add("show"); });
+}
+function appUpdHide() {
+  var bar = appUpdBar();
+  appUpd.shown = false;
+  if (!bar) return;
+  bar.classList.remove("show");
+  setTimeout(function () { try { if (!bar.classList.contains("show")) bar.hidden = true; } catch (e) {} }, 220);
+}
+/* 지금 조용히 다시 열어도 되는 순간인지 — 게이트 · 홈 · 빈 대화방 */
+function appUpdSafe() {
+  try {
+    if (openStack && openStack.length) return false;      /* 열어 둔 창(초대·설정 등)에 쓰던 값 보호 */
+    if (entryGate || !startDone()) return true;           /* 게이트 화면 */
+    if (state.view !== "room") return true;               /* 홈 · 방 목록 */
+    if (run && run.active) return false;                  /* AI 자동토론 · 답변 중 */
+    var inp = $("input");
+    if (inp && String(inp.value || "").trim()) return false;   /* 쓰던 글 */
+    return appUpd.until ? Date.now() >= appUpd.until : true;
+  } catch (e) { return false; }
+}
+function appUpdRetried(v) {
+  try { return (parseInt(sessionStorage.getItem("kkiri.upd." + v) || "0", 10) || 0) >= APP_UPDATE_TRIES; }
+  catch (e) { return true; }
+}
+/* 새 버전으로 다시 열기 — 브라우저·중간 캐시에 남은 옛 HTML 을 피해 주소 표시를 하나 붙인다 */
+function appUpdReload(v) {
+  var mark = String(v || Date.now());
+  try { sessionStorage.setItem("kkiri.upd." + mark, String((parseInt(sessionStorage.getItem("kkiri.upd." + mark) || "0", 10) || 0) + 1)); } catch (e0) {}
+  try { save(); } catch (e1) {}
+  var u = String(location.href);
+  try {
+    var nu = new URL(u);
+    nu.searchParams.set("_r", mark);
+    u = nu.toString();
+  } catch (e2) {
+    u += (u.indexOf("?") < 0 ? "?" : "&") + "_r=" + encodeURIComponent(mark);
+  }
+  try { location.replace(u); } catch (e3) { try { location.reload(); } catch (e4) {} }
+}
+function appUpdCheck() {
+  try { if (!/^https?:$/.test(String(location.protocol))) return; } catch (e0) { return; }   /* file:// 등은 조용히 무시 */
+  if (appUpd.busy) return;
+  var now = Date.now();
+  if (appUpd.at && now - appUpd.at < APP_UPDATE_CD) return;
+  if (appUpd.until && now < appUpd.until) return;
+  appUpd.at = now;
+  appUpd.busy = true;
+  var done = function () { appUpd.busy = false; };
+  var p;
+  try { p = fetch("version.json?t=" + now, { cache: "no-store", credentials: "omit" }); }
+  catch (e1) { done(); return; }
+  p.then(function (res) {
+    if (!res || !res.ok) throw 0;
+    return res.json();
+  }).then(function (j) {
+    done();
+    var v = (j && j.v != null) ? String(j.v) : "";
+    if (!v || !APP_BUILD_VER || v === APP_BUILD_VER) {
+      if (appUpd.shown) appUpdHide();        /* 새 버전으로 열렸으면 안내 바는 내린다 */
+      return;
+    }
+    appUpd.v = v;
+    if (appUpdSafe() && !appUpdRetried(v)) { appUpdReload(v); return; }
+    appUpdShow(v);                            /* 강제로 새로고침하지 않고 안내만 */
+  }).catch(function () { done(); });          /* 네트워크·JSON 오류는 조용히 넘긴다 */
+}
+/* 화면이 다시 보일 때 · 앱이 뒤에서 되살아났을 때 */
+function appUpdOnShow() {
+  try { if (document.hidden) return; } catch (e) {}
+  appUpdCheck();
+}
+(function wireAppUpd() {
+  var go = $("updGo"), x = $("updClose");
+  if (go) go.addEventListener("click", function () { appUpdReload(appUpd.v); });
+  if (x) x.addEventListener("click", function () {
+    appUpdHide();
+    appUpd.until = Date.now() + APP_UPDATE_SNOOZE;   /* 닫으면 5분은 다시 묻지 않는다 */
+  });
+})();
+/* 다시 열며 주소에 붙인 표시(_r)는 주소창에서 지운다 — 공유 링크에 남지 않게 */
+(function clearReloadMark() {
+  try {
+    if (!/[?&]_r=/.test(String(location.search || ""))) return;
+    var u = new URL(location.href);
+    u.searchParams.delete("_r");
+    if (window.history && history.replaceState) history.replaceState(null, "", u.pathname + (u.search || "") + (u.hash || ""));
+  } catch (e) {}
+})();
+
+/* =========================================================
+   21. 시작
    ========================================================= */
 loadApi();
 pinNick();
@@ -14096,12 +14247,15 @@ window.addEventListener("beforeunload", function () { try { save(); } catch (e) 
    돌아왔을 때는 멈춘 자리에서 다시 이어 간다(2026-11-22 지용 님 요청). */
 if (typeof document !== "undefined" && document.addEventListener) {
   document.addEventListener("visibilitychange", function () { try { autoOnVisibility(); } catch (e) {} });
+  /* 새 버전이 배포됐는지 — 화면이 다시 보일 때 확인한다(2026-11-22) */
+  document.addEventListener("visibilitychange", function () { try { appUpdOnShow(); } catch (e) {} });
 }
 window.addEventListener("pagehide", function () {
   try { if (run.active && run.mode === "roundtable" && isRoomOwner(activeRoom())) autoAwayStart(); } catch (e) {}
 });
 window.addEventListener("pageshow", function () {
   try { if (!document.hidden) autoOnVisibility(); } catch (e) {}
+  try { appUpdOnShow(); } catch (e) {}   /* 뒤에 있던 앱을 다시 열었을 때도 새 버전 확인 */
 });
 
 })();
