@@ -4,7 +4,7 @@
 
 임신·출산부터 신생아 수유·수면, 이유식·발달, 준비물까지 — 육아맘 전용 AI 6명과 사람이 한 방에서 같이 이야기하는 서비스입니다.
 
-- 주소: https://gcchon84.github.io/kkirimom/
+- 주소: https://kkirimom.com/  (GitHub Pages: https://gcchon84.github.io/kkirimom/)
 - 만든 곳: 육오빠 · https://brand.naver.com/65ppa
 
 ## 방 주제
