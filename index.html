@@ -702,6 +702,9 @@
   .hide-openchat{display:none !important}
   /* 숨긴 뒤 사이드바 하단 버튼은 마지막 ‘홈 화면에 추가’가 두 칸을 쓴다(빈칸 방지) */
   .side-foot.no-openchat>.side-install{grid-column:1 / -1}
+  /* 홈 하단 — [오픈채팅]을 숨기면 [친구 초대] 아래 2열(후원·의견) + 마지막 ‘홈 화면에 추가’는
+     친구 초대와 같은 폭의 1줄로 펼쳐 왼쪽에 어중간하게 남지 않게 한다(2026-11-22 지용 님) */
+  .home-foot.no-openchat>#homeInstallBtn{grid-column:1 / -1;justify-self:stretch;justify-content:center}
   .home-feedback:hover{border-color:#FFD6DE;color:#C94B66;background:#FFF6F7}
   .side-feedback{border-color:#2f4352}
   .fb-lead{margin:0 0 2px;font-size:12.5px;line-height:1.6;color:#6F535D;letter-spacing:-.01em}
@@ -3282,7 +3285,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261122-2323-6b15e701";
+var APP_BUILD_VER = "20261122-2332-b58f2afa";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
