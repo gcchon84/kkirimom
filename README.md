@@ -14,8 +14,9 @@
 | 임신·출산 | 주수 도우미(Claude) · 마음 공감맘(Claude) · 육아템 가성비 체크(Gemini) · 성장기록 큐레이터(GPT) |
 | 신생아·수면 | 새벽 수유 코치(GPT) · 마음 공감맘(Claude) · 성장기록 큐레이터(GPT) |
 | 이유식·발달 | 이유식·발달 가이드(Gemini) · 육아템 가성비 체크(Gemini) · 성장기록 큐레이터(GPT) |
-| 맘수다·고민 | 마음 공감맘(Claude) · 새벽 수유 코치(GPT) · 성장기록 큐레이터(GPT) |
+| 맘수다·고민 | 마음 공감맘(Claude) · 새벽 수유 코치(GPT) · 성장기록 큐레이터(GPT) · 이유식·발달 가이드(Gemini) |
 | 준비물·살림 | 육아템 가성비 체크(Gemini) · 성장기록 큐레이터(GPT) · 마음 공감맘(Claude) |
+| 나들이·여행 | 아이랑 코스 플래너(Gemini) · 수유실·유모차 체크(GPT) · 감성·사진 스팟(Claude) · 육아템 가성비 체크(Gemini) · 여행 컨디션 도우미(Claude) |
 
 ## 이용
 
@@ -30,5 +31,7 @@ AI 답변은 일반 육아 참고용이며 의사의 진단·치료를 대신하
 
 - `index.html` — 앱 전체 (단일 파일)
 - `manifest.webmanifest` · `sw.js` — 홈 화면에 추가(설치)
-- `icon-192.png` · `icon-512.png` · `apple-touch-icon.png` — 앱 아이콘
+- `icon-192.png` · `icon-512.png` · `apple-touch-icon.png` · `favicon.png` — 앱 아이콘
+- `logo-mark.png` · `logo-full.png` — 로고(ㄲ+아기+ㄹ / 워드마크 포함, 투명 배경)
 - `og-image.png` — 카카오톡·링크 미리보기 이미지
+- `make_brand_assets.py` — 원본 로고 이미지에서 위 이미지들을 다시 만드는 스크립트
