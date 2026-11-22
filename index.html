@@ -3232,7 +3232,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261122-2019-52cd37e8";
+var APP_BUILD_VER = "20261122-2039-fc6cd1a5";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -4038,17 +4038,24 @@ function autoRoles(r) {
   var ids = ((r && r.members) || []).filter(function (id) { return !!state.agents[id]; });
   if (!ids.length) return {};
   var out = {};
-  /* 직접 정한 AI — 방 주제와 상관없이 자기 역할 그대로 */
-  var fixed = ids.filter(function (id) { return !isPresetExpertAgent(state.agents[id]); });
+  /* 직접 정한 AI — 방 주제와 상관없이 자기 역할 그대로.
+     2026-11-22 지용 님 — 미리 만든 전문가도 자기 역할이 있으면 그대로 둔다.
+     방 역할로 덮으면 ‘마음 공감맘’이 ‘주의 신호’, ‘육아템 가성비 체크’가 ‘공감 조언’이 되어
+     역할 밖의 말(소아과 진단·감정 위로)을 하게 된다(‘잠을 안자요’ 방 제보). */
+  var fixed = ids.filter(function (id) {
+    var a = state.agents[id] || {};
+    if (!isPresetExpertAgent(a)) return true;
+    return !!String(a.role || "").trim();
+  });
   fixed.forEach(function (id) {
     var a = state.agents[id] || {};
     var label = String(a.role || "").trim() || "직접 설정";
     var focus = String(a.desc || "").trim() ||
       (String(a.prompt || "").trim().split(/\n/)[0] || "").slice(0, 90) ||
       "직접 정한 성격 그대로";
-    out[id] = { key: "own", label: label, focus: focus, custom: true };
+    out[id] = { key: "own", label: label, focus: focus, custom: !isPresetExpertAgent(a) };
   });
-  var ids2 = ids.filter(function (id) { return isPresetExpertAgent(state.agents[id]); });
+  var ids2 = ids.filter(function (id) { return !out[id] && isPresetExpertAgent(state.agents[id]); });
   if (!ids2.length) return out;
   var keys = roleKeysFor(ids2.length, categoryKeyOf(r));
   var n = ids2.length;
@@ -4126,6 +4133,35 @@ function roleDirective(r, agent) {
   if (!ro) return "";
   return "\n이 방에서 맡은 역할: " + ro.label + " — " + ro.focus + ". " + roleContext(r) +
     " 맥락에서 이 역할로만 발언하고, 다른 역할의 일을 대신하지 않는다.";
+}
+
+/* 2026-11-22 지용 님 — 자기 역할 밖의 말을 하는 문제(마음 공감맘이 소아과 진단, 육아템 가성비가 위로).
+   역할 이름으로 담당을 알아내, 그 담당 밖의 말을 금지하는 줄을 프롬프트 맨 위에 못 박는다.
+   (직접 만든 AI도 역할 문자열로 같은 보호를 받는다) */
+var ROLE_BOUNDS = [
+  { re: /공감|마음|위로|경칭/, line: "너는 마음·공감 담당이다. 오직 엄마의 마음 공감·현실 위로·숨 돌릴 여지만 말한다. 의료·병원·소아과·진단·약·수면법·제품/가격 추천은 한 마디도 하지 않는다." },
+  { re: /가성비|가격|비용|예산/, line: "너는 가성비 담당이다. 오직 물건·제품·가격·구성·예산 비교와 대체품만 말한다. 감정 위로·공감·수면법·의료 조언은 한 마디도 하지 않는다." },
+  { re: /수유.*수면|수면.*수유/, line: "너는 수유·수면 담당이다. 오직 수유·수면 루틴과 컨디션 조절만 말한다. 제품 이름·가격 추천은 하지 않는다." },
+  { re: /비판|검증|리스크|허점|반대/, line: "너는 비판 담당이다. 오직 놓친 리스크·반대 관점·현실 체크 1가지만 말한다. 앞사람 말을 그대로 반복하거나 요약만 하지 않는다." }
+];
+function roleBoundLine(roleText) {
+  var t = String(roleText || "");
+  for (var i = 0; i < ROLE_BOUNDS.length; i++) if (ROLE_BOUNDS[i].re.test(t)) return ROLE_BOUNDS[i].line;
+  return "";
+}
+function agentRoleText(r, agent) {
+  var parts = [];
+  try { var ro = (r && agent) ? roleOf(r, agent.id) : null; if (ro && ro.label) parts.push(ro.label); } catch (e) {}
+  if (agent && agent.role) parts.push(String(agent.role));
+  return parts.join(" ").trim();
+}
+function roleBoundBlock(r, agent) {
+  var txt = agentRoleText(r, agent);
+  var bound = roleBoundLine(txt) || roleBoundLine(agent && agent.prompt);
+  return "[역할 경계 — 최우선] 너는 '" + ((agent && agent.name) || "AI") + "'이고 맡은 역할은 '" + (txt || "전문가") +
+    "'다. 말투는 아래 말투 규칙을 따르되, 말의 내용은 이 역할 밖으로 절대 나가지 않는다." +
+    (bound ? " " + bound : "") +
+    " 다른 담당의 일(공감·제품·수면법·의료·리스크)은 그 담당에게 맡긴다.\n";
 }
 
 /* =========================================================
@@ -7084,14 +7120,16 @@ var SPECIFICITY_RULE = "구체성: ‘주변 카페’, ‘현지 맛집’, ‘
 var TONE_CASUAL_RULE = "친구말: 반드시 다정하고 편한 친구 말투(~했어, ~같아, ~해 보자, ~어때?)로만 답하세요. 절대 '~한다 / ~그렇다 / ~필요하다' 같은 딱딱한 해라체·보고서체나 존댓말(~요/~습니다)을 쓰지 마세요.";
 var TONE_POLITE_RULE = "존댓말: 반드시 자연스러운 한국어 존댓말(~요/~습니다)로만 답하세요. 어떤 상황에서도 반말을 쓰지 마세요.";
 var TONE_RULES = { casual: TONE_CASUAL_RULE, polite: TONE_POLITE_RULE };
-/* 끼리맘 공통 — 육아 조언의 안전선. 건강·의료 주제일 때만 짧은 한 줄을 넣는다. */
+/* 끼리맘 공통 — 육아 조언의 안전선. 건강·의료(health) 주제일 때만 짧은 한 줄을 넣는다.
+   2026-11-22 지용 님 — 신생아·수유·임신 같은 일반 육아 주제에 붙이면 공감맘·가성비 AI까지
+   소아과·복부팽만을 말하는 역할 붕괴가 생겼다(‘잠을 안자요’ 방 제보). */
 var MEDICAL_RULE = "안전: 병원·약·증상 판단은 단정하지 말고 소아과·119 확인을 먼저 권하고, 용량·접종은 ‘확인 필요’로 표시한다. 이 안내는 한 줄로만, 네 역할 경계가 더 우선한다. ";
 function medicalRuleFor() {
   var r = (typeof activeRoom === "function") ? activeRoom() : null;
   var cat = String((r && ((r.settings && r.settings.category) || r.category)) || "").toLowerCase();
-  var txt = cat + " " + String((r && (r.agenda || r.name)) || "");
-  if (/^(health|newborn|pregnant|feeding|hospital|medical)$/.test(cat)) return MEDICAL_RULE;
-  if (/(병원|소아과|응급|발열|체온|약 |접종|증상|아파|아픈|수유|모유|분유|황달|경련|호흡)/.test(txt)) return MEDICAL_RULE;
+  var txt = String((r && (r.agenda || r.name)) || "");
+  if (/^(health|medical|hospital)$/.test(cat)) return MEDICAL_RULE;
+  if (/(병원|소아과|응급|발열|고열|열이\s*(나|높|오르)|38도|39도|체온|해열|진통제|용량|접종|예방접종|증상|아파|아픈|아프|질환|진단|황달|경련|호흡\s*(곤란|이상)|기침|콧물|구토|설사|발진)/.test(txt)) return MEDICAL_RULE;
   return "";
 }
 
@@ -7122,11 +7160,12 @@ function systemFor(agent, phase) {
       : " 진행 중에는 지금까지 나온 의견의 공통점 1가지와 이견 1가지를 짚고, 다음에 볼 관점 하나를 던진다.");
   /* 이어받기·중복 금지 — "따로 말하는 느낌이 꼭 없게"(2026-11-22 지용 님). */
   var joinRule = isMod ? "" :
+    " 앞사람 말에서 한 단어만 받아치되, 대답 내용은 100% 네 역할로만 답한다(예: 가성비 담당은 물건·가격 얘기만, 공감 담당은 마음 위로만). 앞사람이 다른 담당의 얘기(의료·제품·수면법)를 했어도 그 얘기를 이어서 하지 않는다." +
     " 2번째 발언자부터는 바로 앞사람(또는 직전 2명 중 1명)이 방금 한 말을 이름으로 불러(‘OO 님이 말한 ~는 좋은데’) 받아들일 점 1가지 또는 다른 각도 1가지만 보태고, 앞사람이 이미 낸 팁·시간·수치를 말만 바꿔 반복하지 않는다. 이어받는 첫 문구를 매번 같게 쓰지 않고(‘~는 좋은데’ / ‘~에 하나만 보태면’ / ‘~와 달리’), 칭찬만 하고 끝내지 않는다. 이어받은 뒤에는 네 역할 범위의 새 정보(이름·수치·조건)를 1가지 반드시 넣는다.";
   var toneClause = toneOf(r) === "polite"
     ? "반드시 한국어 존댓말(~요/~습니다)로만 답하고, 가벼운 수다·농담·짧은 한마디에서도 반말을 쓰지 않는다. 문장 끝은 ‘~요’ 또는 ‘~습니다’로 맺고 ‘~죠/~지/~네/~군/~야’ 같은 반말·구어 종결로 끝내지 않는다."
     : "다정하고 편한 친구 말투(~했어, ~같아, ~해 보자, ~어때?)로 답하고, ‘~한다/~그렇다/~필요하다’ 같은 해라체·보고서체와 ‘~요/~습니다’ 존댓말은 쓰지 않는다.";
-  return toneRuleFor(r) + "\n" + medicalRuleFor() + base + roleDirective(r, agent) + modBlock + "\n방: " + r.name + " / 안건: " + (r.agenda || "없음") +
+  return roleBoundBlock(r, agent) + toneRuleFor(r) + "\n" + medicalRuleFor() + base + roleDirective(r, agent) + modBlock + "\n방: " + r.name + " / 안건: " + (r.agenda || "없음") +
     "\n함께 있는 AI: " + team +
     "\n규칙: " + toneClause + " " + lengthRule + " 마크다운 제목·이모지 금지. 확인하지 않은 수치·일정·재고를 아는 것처럼 말하지 말고 ‘확인 필요’로 표시한다. 인사·추임새는 넣지 않는다. 앞사람 이름을 지목해 이어받는 것은 좋다. 자기 이름을 매번 붙이지 않는다." + joinRule +
     " 네 역할 경계(공감 담당은 감정·위로, 가성비 담당은 제품·비용, 비판 담당은 리스크)를 지키고 다른 역할의 답을 대신하지 않는다. 참여자를 부를 때는 채팅방에 보이는 닉네임으로만 부르고, 실명이나 다른 별명으로 부르지 않는다." +
