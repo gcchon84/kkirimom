@@ -3232,7 +3232,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261122-2005-51e973ef";
+var APP_BUILD_VER = "20261122-2009-262b42f5";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -7555,10 +7555,18 @@ function buildCard(r, opts) {
      없으면 ‘~해 보세요 / 확인해 보세요’ 같은 실행 문장을 쓴다. 결정·이견과 겹쳐도 할 일은 남긴다. */
   var todos = [];
   var TODO_RE = /(해 ?보|해보|확인(해|하)|기록(해|하)|점검(해|하)|시도(해|하)|문의(해|하)|예약(해|하)|물어보|체크(해|하)|정리(해|하)|조정(해|하)|재 ?보|전화해|재어|측정)/;
+  /* 카드용 cardSentences()는 ‘~거야/~지’ 같은 친구말 종결을 걸러 낸다. 할 일은 그 문장에서 나오므로
+     여기서는 표시만 걷어 낸 문장으로 다시 나눈다. */
+  function plainSentences(t) {
+    return String(t || "").replace(/\[[^\]\n]{0,24}\]/g, " ").replace(/[#*_>`]+/g, " ")
+      .replace(/\r/g, "\n").replace(/([.!?])\s+/g, "$1\n").split("\n")
+      .map(function (x) { return x.replace(/\s+/g, " ").replace(/[.!?。]+$/, "").trim(); })
+      .filter(function (x) { return x.length >= 8; });
+  }
   function pushTodo(t) {
-    var q = String(t || "").replace(/^[\s:·•\-–]+/, "").replace(/[.。]$/, "").trim();
-    if (q.length < 6 || q.length > 90) return;
-    for (var i = 0; i < todos.length; i++) if (similarity(todos[i], q) >= 0.5) return;
+    var q = String(t || "").replace(/^[\s:·•\-–]+/, "").replace(/[,.。，]+$/, "").trim();
+    if (q.length < 6 || q.length > 100) return;
+    for (var i = 0; i < todos.length; i++) if (similarity(todos[i], q) >= 0.55) return;
     if (todos.length < 3) todos.push(q);
   }
   function todoFromClause(s) {
@@ -7566,30 +7574,31 @@ function buildCard(r, opts) {
     var idx = t.search(/다음 할 일|다음으로는?|할 일은/);
     var tail = idx >= 0 ? t.slice(idx).replace(/^(다음 할 일(은|로)?|다음으로는?|할 일은)\s*/, "") : t;
     var parts = tail.split(/[①②③④⑤⑥]/).map(function (x) { return x.trim(); }).filter(Boolean);
-    if (parts.length < 2) {
-      parts = tail.split(/\s*(?:,\s*|그리고\s+|·)/).map(function (x) { return x.trim(); }).filter(Boolean);
+    /* ①②③으로 나뉘었으면 그것이 곧 할 일 목록이다 — 실행 낱말이 없어도 담는다. */
+    if (parts.length >= 2) {
+      parts.forEach(function (p) { pushTodo(p.replace(/^(그리고|또한|그다음)\s+/, "")); });
+      return;
     }
-    parts.forEach(function (p) {
+    tail.split(/\s*(?:그리고\s+|·|;)\s*/).map(function (x) { return x.trim(); }).filter(Boolean).forEach(function (p) {
       var q = p.replace(/^(그리고|또한|그다음)\s+/, "").trim();
-      if (!TODO_RE.test(q)) return;
-      pushTodo(q);
+      if (TODO_RE.test(q)) pushTodo(q);
     });
   }
   var modMsgs = all.filter(function (m) { return m.phase === "converge" || isModeratorMsg(m); });
   if (!modMsgs.length) modMsgs = all.slice();
   modMsgs.forEach(function (m) {
-    cardSentences(m.text).forEach(function (s) {
+    plainSentences(m.text).forEach(function (s) {
       if (isRiskOnly(s)) return;
       if (/다음 할 일|다음으로는?|할 일은/.test(s)) { todoFromClause(s); return; }
-      if (TODO_RE.test(s)) pushTodo(s);
+      if (TODO_RE.test(s) && !isDecisionSaid(s)) pushTodo(s);
     });
   });
   /* 사회자 마무리가 없거나 비어 있으면 다른 발언의 실행 문장으로 채운다 */
   if (!todos.length) {
     all.forEach(function (m) {
       if (m.phase === "open") return;
-      cardSentences(m.text).forEach(function (s) {
-        if (!isRiskOnly(s) && TODO_RE.test(s)) pushTodo(s);
+      plainSentences(m.text).forEach(function (s) {
+        if (!isRiskOnly(s) && TODO_RE.test(s) && !isDecisionSaid(s)) pushTodo(s);
       });
     });
   }
