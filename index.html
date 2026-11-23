@@ -3452,7 +3452,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261123-2430-f204eada";
+var APP_BUILD_VER = "20261123-2455-43698a5f";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -10669,9 +10669,8 @@ function rtApplyRoles(r, roles, sig, modId, idsIn) {
   return true;
 }
 async function rtEnsureRoles(r, agenda, brand, modId, idsIn) {
-  function log(x) { try { (window.__DYN_LOG = window.__DYN_LOG || []).push(x); } catch (e) {} }
-  if (!RT_ROLES_ON || !r) { log({ stop: "off" }); return { applied: false }; }
-  if (roleModeOf(r) === "manual") { log({ room: r.id, stop: "manual" }); return { applied: false }; }   /* 사용자가 직접 정한 역할은 덮지 않는다 */
+  if (!RT_ROLES_ON || !r) return { applied: false };
+  if (roleModeOf(r) === "manual") return { applied: false };   /* 사용자가 직접 정한 역할은 덮지 않는다 */
   var ids = (idsIn && idsIn.length) ? idsIn.filter(function (id) { var a = state.agents[id]; return !!a && isPresetExpertAgent(a); }) : [];
   if (!ids.length) ids = rtPresetIdsForRoles(r);
   /* 시작 직후 서버 동기화가 state.agents 를 잠깐 갈아 끼우면 AI 를 못 찾는다 — 한 번 쉬었다 다시 본다. */
@@ -10679,7 +10678,7 @@ async function rtEnsureRoles(r, agenda, brand, modId, idsIn) {
     await sleep(600);
     ids = (idsIn || []).filter(function (id) { var a = state.agents[id]; return !!a && isPresetExpertAgent(a); });
   }
-  if (!ids.length) { log({ room: r.id, stop: "no-preset", members: (r.members || []).length }); return { applied: false }; }
+  if (!ids.length) return { applied: false };
   var sig = rtRolesSig(r, agenda, brand, modId);
   if (rtRolesFresh(r, sig)) return { applied: false, reused: true, roles: r.dynamicRoles };
   var roles = await rtFetchRoles(r, agenda, brand, modId, ids);
@@ -10687,7 +10686,6 @@ async function rtEnsureRoles(r, agenda, brand, modId, idsIn) {
   if (!roles) roles = rtLocalRoleSet(agenda, brand, ids, r, modId);
   if (!roles || !roles.length) return { applied: false };
   var ok = rtApplyRoles(r, roles, sig, modId, ids);
-  log({ room: r.id, ids: ids.length, src: source, ok: ok, n: Object.keys(r.dynamicRoles || {}).length });
   return { applied: ok, source: source, roles: r.dynamicRoles };
 }
 /* 안건 맞춤 역할을 걷어낸다 — 사용자가 역할을 직접 정하는 모드로 바꿀 때. */
