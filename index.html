@@ -80,7 +80,9 @@
   h1,h2,h3,h4,p{margin:0}
   ul{margin:0}
   [hidden]{display:none !important}
-  .app{display:flex;height:100vh;height:100dvh;max-width:1500px;margin:0 auto;background:#FFFCFB;box-shadow:0 0 60px rgba(58,39,49,.08)}
+  /* 2026-11-23 — 모바일(안드로이드 바로가기 앱)에서 100dvh 가 실제 보이는 높이보다 커서
+     하단 입력창이 시스템 내비게이션 바 아래로 밀려나던 문제. JS 가 --app-h 에 visualViewport 높이를 넣는다. */
+  .app{display:flex;height:100vh;height:var(--app-h,100dvh);max-width:1500px;margin:0 auto;background:#FFFCFB;box-shadow:0 0 60px rgba(58,39,49,.08)}
 
   /* ============ sidebar ============ */
   .sidebar{
@@ -351,7 +353,7 @@
   .msg.extai .who{color:#12796B}
 
   /* ============ main ============ */
-  .main{flex:1;min-width:0;display:flex;flex-direction:column;height:100vh;height:100dvh;background:#FFFCFB;position:relative}
+  .main{flex:1;min-width:0;display:flex;flex-direction:column;height:100vh;height:var(--app-h,100dvh);min-height:0;background:#FFFCFB;position:relative}
   .room-head{
     display:flex;align-items:center;gap:10px;padding:11px 18px;background:rgba(255,255,255,.92);
     border-bottom:1px solid var(--line);backdrop-filter:blur(6px);flex:0 0 auto;
@@ -569,7 +571,10 @@
   .composer{
     flex:0 0 auto;background:rgba(255,255,255,.96);border-top:1px solid var(--line);
     padding:9px 16px calc(10px + env(safe-area-inset-bottom));backdrop-filter:blur(6px);
+    position:relative;z-index:2;
   }
+  /* 2026-11-23 — 멘션 칩(.quick)이 여러 줄로 늘어나도 입력 줄은 늘 화면 안에 남는다 */
+  .composer .composer-row{flex:0 0 auto}
   .quick{display:flex;gap:6px;overflow-x:auto;padding:1px 0 8px;scrollbar-width:none;max-width:860px;margin:0 auto}
   .quick::-webkit-scrollbar{display:none}
   .quick:empty{padding:0}
@@ -1278,14 +1283,15 @@
 
   /* ============ responsive ============ */
   @media (max-width:900px){
-    .app{display:block;height:100vh;height:100dvh;max-width:none}
+    /* 좁은 화면 — 앱을 보이는 화면에 고정해 페이지가 밀려 올라가지 않게(입력창이 화면 밖으로 나가지 않게) */
+    .app{display:block;position:fixed;top:0;left:0;right:0;height:var(--app-h,100dvh);max-width:none;overflow:hidden}
     .sidebar{
       position:fixed;left:0;top:0;bottom:0;width:min(320px,88vw);flex:none;z-index:40;
       transform:translateX(-104%);transition:transform .22s ease;box-shadow:14px 0 40px rgba(42,30,40,.3);
     }
     .sidebar.open{transform:none}
     .sidebar .side-close{display:inline-grid}
-    .main{height:100vh;height:100dvh}
+    .main{height:var(--app-h,100dvh);min-height:0}
     .only-mobile{display:inline-grid}
     .room-head{padding:8px 10px 9px;gap:6px 7px;flex-wrap:wrap}
     .room-head .room-emoji{display:none}
@@ -3405,7 +3411,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261123-1434-36b3191a";
+var APP_BUILD_VER = "20261123-1450-d92eb3bd";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -15549,17 +15555,51 @@ function wire() {
   $("input").addEventListener("keydown", function (e) {
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); onSend(); }
   });
-  /* 카톡 인앱·모바일 키보드에서 입력칸이 화면 밖으로 밀리지 않게 포커스 때 한 번 올려 준다 */
+  /* ===== 2026-11-23 — 모바일 입력창이 화면 밖으로 밀리지 않게 =====
+     안드로이드 바로가기 앱·인앱 브라우저에서 100dvh 가 실제 보이는 영역보다 커서
+     @멘션 칩 아래 입력칸(#input)·보내기(#sendBtn)가 시스템 내비게이션 바에 가려졌다.
+     · 앱 높이를 visualViewport.height 에 맞춘다(--app-h)
+     · 키보드·주소창·회전으로 높이가 바뀔 때마다 다시 맞춘다
+     · 페이지 전체가 밀려 올라가지 않게 scrollTo(0,0) 로 고정한다
+     · 포커스 때 넣던 composer 인라인 padding 은 blur 에서 반드시 되돌린다 */
+  window.__kkiriApplyViewport = function () {
+    var vv = window.visualViewport;
+    var h = Math.round((vv && vv.height) || window.innerHeight || document.documentElement.clientHeight || 0);
+    if (!h || h < 200) return;                       /* 회전·초기화 중의 0 값은 무시 */
+    var root = document.documentElement;
+    root.style.setProperty("--app-h", h + "px");
+    root.style.setProperty("--app-top", Math.max(0, Math.round((vv && vv.offsetTop) || 0)) + "px");
+    if (window.scrollY || window.pageYOffset) { try { window.scrollTo(0, 0); } catch (e) {} }
+    var comp = $("composer");
+    if (comp && !comp.hidden) comp.style.paddingBottom = "";   /* 예전 인라인 padding 잔여값 정리 */
+  };
+  var vvRaf = 0;
+  function scheduleViewport() {
+    if (vvRaf) return;
+    vvRaf = (window.requestAnimationFrame || function (fn) { return setTimeout(fn, 16); })(function () {
+      vvRaf = 0; window.__kkiriApplyViewport();
+    });
+  }
+  window.addEventListener("resize", scheduleViewport);
+  window.addEventListener("orientationchange", function () { setTimeout(scheduleViewport, 280); });
+  if (window.visualViewport) {
+    try {
+      window.visualViewport.addEventListener("resize", scheduleViewport);
+      window.visualViewport.addEventListener("scroll", scheduleViewport);
+    } catch (e) {}
+  }
+  window.__kkiriApplyViewport();
+  /* 카톡 인앱·모바일 키보드 — 포커스 때 한 번 더 맞추고, blur 에서 인라인 값을 되돌린다 */
   $("input").addEventListener("focus", function () {
-    var el = $("input");
     setTimeout(function () {
-      try { el.scrollIntoView({ block: "nearest" }); } catch (e) {}
-      var vv = window.visualViewport;
-      if (vv) {
-        var comp = $("composer");
-        if (comp) comp.style.paddingBottom = Math.max(10, Math.round(vv.height - vv.offsetTop - (innerHeight - 80))) + "px";
-      }
+      try { $("input").scrollIntoView({ block: "nearest" }); } catch (e) {}
+      window.__kkiriApplyViewport();
     }, 260);
+  });
+  $("input").addEventListener("blur", function () {
+    var comp = $("composer");
+    if (comp) comp.style.paddingBottom = "";
+    window.__kkiriApplyViewport();
   });
 
   $("pauseBtn").addEventListener("click", function () {
