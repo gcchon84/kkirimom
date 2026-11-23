@@ -1380,6 +1380,8 @@
     .msg .bubble{font-size:12px;padding:9px 11px}
     .msg .who{font-size:10.5px}
     .msg .who em{display:none}
+    /* 이름과 역할 라벨이 다를 때만 보인다 — 이름이 곧 역할인 경우(안건 맞춤 이름)는 이름만으로 충분하다. */
+    .msg .who em.diff{display:inline;max-width:64px}
     .composer{padding:8px 11px calc(8px + env(safe-area-inset-bottom))}
     .send{padding:0 13px;font-size:11.5px;height:42px}
     .composer textarea{min-height:42px;font-size:12.5px;padding:11px 12px}
@@ -3452,7 +3454,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261123-2455-43698a5f";
+var APP_BUILD_VER = "20261123-2520-6fd1c721";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -5370,7 +5372,8 @@ function msgHtml(m) {
   var modNow = (msgRoom && msgRoom.moderator) || run.moderator || "";
   var isModMsg = !!(modNow && (sameName(msgName, modNow) || sameName(a.name, modNow) || sameName(a.id, modNow)));
   return '<div class="msg ' + (a.type === "expert" ? "kkiriai" : "myai") + '">' + avatarHtml(m.who, null, true) + '<div class="body">' +
-    '<div class="who">' + esc(msgName) + engineBadge(m) + (isModMsg ? '<span class="mod-tag">' + icoHtml("crown", "xs") + '사회자</span>' : "") + "<em>" + esc(ro ? ro.label : a.role) + "</em>" + srcBadge(m) + "</div>" +
+    '<div class="who">' + esc(msgName) + engineBadge(m) + (isModMsg ? '<span class="mod-tag">' + icoHtml("crown", "xs") + '사회자</span>' : "") +
+      "<em" + ((ro && ro.label && ro.label !== msgName) ? ' class="diff"' : "") + ">" + esc(ro ? ro.label : a.role) + "</em>" + srcBadge(m) + "</div>" +
     '<div class="bubble">' + fmtText(m.text) + "</div>" +
     '<div class="meta">' + meta + "</div></div></div>";
 }
