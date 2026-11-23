@@ -3405,7 +3405,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261123-1158-83a49909";
+var APP_BUILD_VER = "20261123-1211-5356ea21";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -14484,114 +14484,76 @@ function expertDef(exId) {
   return found;
 }
 /* ---------- 끼리맘 AI 입장 인사 (0크레딧 · 서버 AI 호출 없음) ----------
-   방에 새로 들어온 끼리맘 AI가 남기는 짧은 한 줄. 프리셋은 역할별 문장을 쓰고,
-   직접 만든 AI는 이름·역할로 만든다. 서버 AI를 부르지 않으므로 크레딧이 나가지 않는다.
+   2026-11-23 지용 님 — “업무 설명서처럼 굴지 말고, 사람이 들어와서 인사하듯 가볍게.”
+   역할·기능을 읊던 문장을 걷어내고, 가벼운 한 줄 인사 풀에서 하나를 고른다.
+   같은 방에 여러 AI가 함께 들어와도 같은 문장이 겹치지 않게, 이미 쓴 인사는 건너뛴다.
+   말투는 방 설정(친구말/존댓말)을 따른다.
    입장 액션(방 만들기·AI 추가)에서만 부르므로 새로고침·재입장에서는 다시 인사하지 않는다. */
-var ENTRY_GREET = {
-  preg_week: "안녕하세요! 지금 주수에 맞는 검진 시기와 준비물부터 짚어 드릴게요.",
-  mom_heart: "안녕하세요. 오늘 마음이 어떤지 먼저 듣고 싶어요. 편하게 말씀해 주세요.",
-  sleep_coach: "안녕하세요! 오늘 밤 바꿀 한 가지만 같이 정해 봐요.",
-  food_guide: "안녕하세요! 월령에 맞는 이유식 단계와 발달 체크를 같이 볼게요.",
-  gear_value: "안녕하세요! 같은 값이면 뭐가 나은지 숫자로 비교해 드릴게요.",
-  grow_curator: "안녕하세요! 남길 기록을 순서대로 정리해 드릴게요. 사진은 폰에 그대로 두시면 돼요.",
-  trip_course: "안녕하세요! 아이 낮잠·식사 시간에 맞춰 코스를 짜 드릴게요.",
-  trip_gear: "안녕하세요! 수유실과 유모차 동선부터 확인해 드릴게요.",
-  trip_photo: "안녕하세요! 사진 남기기 좋은 장소와 시간을 골라 드릴게요.",
-  trip_safe: "안녕하세요! 아이 컨디션과 날씨부터 먼저 살펴볼게요.",
-  health_symptom: "안녕하세요! 증상과 컨디션을 차분히 정리해 드릴게요. 진단은 소아과에서 받아 주세요.",
-  health_alert: "안녕하세요! 지금 병원에 가야 하는 신호인지부터 같이 볼게요.",
-  health_memo: "안녕하세요! 소아과에서 물어볼 것을 메모로 정리해 드릴게요.",
-  health_care: "안녕하세요! 집에서 오늘 해 볼 돌봄을 세 가지로 추려 드릴게요.",
-  brand_info: "안녕하세요! 육오빠 상품과 가격대를 정확히 안내해 드릴게요.",
-  brand_gift: "안녕하세요! 받는 분과 예산에 맞춰 선물을 골라 드릴게요.",
-  brand_tip: "안녕하세요! 산 상품을 잘 쓰는 순서를 알려 드릴게요.",
-  brand_prep: "안녕하세요! 출산준비물에서 꼭 필요한 것만 골라 드릴게요.",
+var ENTRY_GREET = [
+  "안녕하세요! 오늘 아이랑 어떤 하루 보내셨어요?",
+  "반가워요! 육아 얘기든 뭐든 편하게 꺼내 주세요.",
 
-  copywriter: "안녕하세요! 짧고 리듬 있는 문장으로 문구를 다듬어 드릴게요.",
-  marketer: "안녕하세요! 예산과 기간부터 정하고 채널·타이밍을 짜 드릴게요.",
-  redteam: "안녕하세요! 계획의 허점과 리스크부터 짚어 드릴게요.",
-  planner: "안녕하세요! 결정할 것과 확인할 것, 다음 할 일로 나눠 순서를 잡아 드릴게요.",
-  analyst: "안녕하세요! 숫자와 근거로 비교해서 보여 드릴게요.",
-  researcher: "안녕하세요! 비교 기준을 먼저 세우고 사례를 정리해 드릴게요.",
-  travel_route: "안녕하세요! 이동 동선과 시간표를 깔끔하게 짜 드릴게요.",
-  travel_spot: "안녕하세요! 분위기와 동선에 맞는 곳으로 골라 드릴게요.",
-  travel_budget: "안녕하세요! 교통·숙소·식비를 숫자로 나눠 총액을 맞춰 드릴게요.",
-  travel_risk: "안녕하세요! 날씨·주차·대기처럼 일정을 흔드는 변수부터 볼게요.",
-  travel_idea: "안녕하세요! 흔한 코스 대신 그 동네에서만 되는 한 곳을 찾아 드릴게요.",
-  daily_taste: "안녕하세요! 지금 기분과 동행에 맞는 메뉴·가게를 골라 드릴게요.",
-  daily_value: "안녕하세요! 같은 값이면 구성이 나은 쪽을 계산해 드릴게요.",
-  daily_mood: "안녕하세요! 조용한지 시끄러운지, 앉을 자리까지 보고 골라 드릴게요.",
-  daily_review: "안녕하세요! 좋은 점만 말하지 않고 단점과 팁도 같이 드릴게요.",
-  counsel_empathy: "안녕하세요! 편하게 이야기해 주세요, 마음부터 같이 들을게요.",
-  counsel_real: "안녕하세요! 현실적인 장단점이랑 선택지를 짚어 드릴게요.",
-  counsel_other: "안녕하세요! 내가 못 본 쪽을 정중하게 짚어 드릴게요.",
-  counsel_sort: "안녕하세요! 고민을 선택지로 나눠 비교해 드릴게요.",
-  free_talker: "안녕하세요! 가볍게 이야기 나눠요.",
-  free_wit: "안녕하세요! 분위기 살리는 한마디 곁들일게요.",
-  free_empathy: "안녕하세요! 편하게 말씀하세요, 마음부터 들을게요.",
-  free_topic: "안녕하세요! 대화가 멈추면 새 얘깃거리를 꺼내 드릴게요.",
-  etc_idea: "안녕하세요! 막힌 지점에서 쓸 아이디어를 꺼내 드릴게요.",
-  etc_research: "안녕하세요! 확인된 사실과 추정을 나눠서 정리해 드릴게요.",
-  etc_reality: "안녕하세요! 계획의 허점과 리스크부터 볼게요.",
-  etc_tidy: "안녕하세요! 이야기를 한 장으로 정리해 드릴게요."
-};
+  "안녕하세요! 오늘은 어떤 이야기 나눠 볼까요?",
+  "반갑습니다! 편하게 말씀 꺼내 주세요.",
+  "안녕하세요, 같이 이야기 나눠 봐요!",
+  "안녕하세요! 저도 옆에서 같이 볼게요.",
+  "반가워요! 궁금한 거 있으면 편하게 물어보세요.",
+  "안녕하세요! 오늘 하루는 어떠셨어요?",
+  "안녕하세요! 이야기 나누면 좋겠어요.",
+  "반갑습니다! 어떤 이야기든 편하게 해 주세요."
+];
 /* 같은 인사말의 친구말(기본 말투) 버전 — 방 말투가 casual 이면 이쪽을 쓴다. */
-var ENTRY_GREET_CASUAL = {
-  health_symptom: "안녕! 증상이랑 컨디션 차분히 정리해 줄게. 진단은 소아과에서 받자.",
-  health_alert: "안녕! 지금 병원에 가야 하는 신호인지부터 같이 보자.",
-  health_memo: "안녕! 소아과에서 물어볼 것 메모로 정리해 줄게.",
-  health_care: "안녕! 집에서 오늘 해 볼 돌봄 세 가지로 추려 줄게.",
-  brand_info: "안녕! 육오빠 상품이랑 가격대 정확히 알려 줄게.",
-  brand_gift: "안녕! 받는 사람이랑 예산 맞춰서 선물 골라 줄게.",
-  brand_tip: "안녕! 산 상품 잘 쓰는 순서 알려 줄게.",
-  brand_prep: "안녕! 출산준비물 중에 꼭 필요한 것만 골라 줄게.",
-  trip_course: "안녕! 아이 낮잠 시간 맞춰서 코스 짜 줄게.",
-  trip_gear: "안녕! 수유실이랑 유모차 동선부터 확인해 볼게.",
-  trip_photo: "안녕! 사진 남기기 좋은 데 같이 골라 보자.",
-  trip_safe: "안녕! 아이 컨디션이랑 날씨부터 볼게.",
-  gear_value: "안녕! 같은 값이면 구성 나은 쪽으로 계산해 줄게.",
-  copywriter: "안녕! 짧고 리듬 있는 문장으로 문구 다듬어 줄게.",
-  marketer: "안녕! 예산이랑 기간부터 정하고 채널·타이밍 짜 줄게.",
-  redteam: "안녕! 계획 허점이랑 리스크부터 짚어 줄게.",
-  planner: "안녕! 결정할 것, 확인할 것, 다음 할 일로 나눠서 순서 잡아 줄게.",
-  analyst: "안녕! 숫자랑 근거로 비교해서 보여 줄게.",
-  researcher: "안녕! 비교 기준부터 세우고 사례 정리해 줄게.",
-  travel_route: "안녕! 이동 동선이랑 시간표 깔끔하게 짜 줄게.",
-  travel_spot: "안녕! 분위기랑 동선에 맞는 곳으로 골라 줄게.",
-  travel_budget: "안녕! 교통·숙소·식비 숫자로 나눠서 총액 맞춰 줄게.",
-  travel_risk: "안녕! 날씨·주차·대기처럼 일정 흔드는 변수부터 볼게.",
-  travel_idea: "안녕! 흔한 코스 말고 그 동네에서만 되는 한 곳 찾아 줄게.",
-  daily_taste: "안녕! 지금 기분이랑 같이 가는 사람에 맞춰 메뉴·가게 골라 줄게.",
-  daily_value: "안녕! 같은 값이면 구성 나은 쪽으로 계산해 줄게.",
-  daily_mood: "안녕! 조용한지 시끄러운지, 앉을 자리까지 보고 골라 줄게.",
-  daily_review: "안녕! 좋은 점만 말하지 않고 단점이랑 팁도 같이 말해 줄게.",
-  counsel_empathy: "안녕! 편하게 얘기해 줘, 마음부터 같이 들을게.",
-  counsel_real: "안녕! 현실적인 장단점이랑 선택지 짚어 줄게.",
-  counsel_other: "안녕! 네가 못 본 쪽을 정중하게 짚어 줄게.",
-  counsel_sort: "안녕! 고민을 선택지로 나눠서 비교해 줄게.",
-  free_talker: "안녕! 가볍게 얘기 나누자.",
-  free_wit: "안녕! 분위기 살리는 한마디 곁들일게.",
-  free_empathy: "안녕! 편하게 말해 줘, 마음부터 들을게.",
-  free_topic: "안녕! 대화 멈추면 새 얘깃거리 꺼내 줄게.",
-  etc_idea: "안녕! 막힌 지점에서 쓸 아이디어 꺼내 줄게.",
-  etc_research: "안녕! 확인된 사실이랑 추정 나눠서 정리해 줄게.",
-  etc_reality: "안녕! 계획 허점이랑 리스크부터 볼게.",
-  etc_tidy: "안녕! 이야기 한 장으로 정리해 줄게."
-};
+var ENTRY_GREET_CASUAL = [
+  "안녕! 오늘 아이랑 뭐 하고 지냈어?",
+  "반가워! 육아 얘기든 뭐든 편하게 말해 줘.",
+
+  "안녕! 오늘은 무슨 얘기 해 볼까?",
+  "반가워! 편하게 말 걸어 줘.",
+  "안녕! 같이 이야기 나눠 보자.",
+  "반가워, 어떤 주제든 편하게 던져 줘!",
+  "안녕! 나도 같이 고민해 볼게.",
+  "안녕! 오늘 뭐 하면서 지냈어?",
+  "반가워! 얘기하다 보면 재밌는 게 나오겠지.",
+  "안녕! 궁금한 거 있으면 편하게 말해 줘."
+];
+/* 직접 만든 AI — 자기 이름만 가볍게 대고 들어온다(역할 설명 없이). {name} 자리에 이름이 들어간다. */
+var ENTRY_GREET_CUSTOM = [
+  "안녕하세요! 저는 {name}입니다. 편하게 말씀 꺼내 주세요.",
+  "반갑습니다! 저는 {name}입니다. 같이 이야기 나눠 봐요.",
+  "안녕하세요, {name}입니다. 궁금한 게 있으면 편하게 물어보세요."
+];
+var ENTRY_GREET_CUSTOM_CASUAL = [
+  "안녕! 난 {name}. 편하게 말 걸어 줘.",
+  "반가워! 난 {name}. 같이 얘기해 보자.",
+  "안녕, 난 {name}. 궁금한 거 있으면 편하게 말해 줘."
+];
+/* 인사 하나 고르기 — AI마다 시작 위치가 달라 같은 방에서도 문장이 겹치지 않는다.
+   이미 이 방에서 다른 AI가 쓴 인사(옛 역할 인사 포함)는 건너뛰고 다음 후보로 간다. */
+function entryGreetPick(pool, agent, room, name) {
+  if (!pool || !pool.length) return "";
+  var used = {};
+  ((room && room.messages) || []).forEach(function (m) {
+    if (m && (m.kind === "greet" || m.src === "greet") && m.who !== agent.id && m.text) used[String(m.text)] = 1;
+  });
+  function fill(t) { return name == null ? t : String(t).replace(/\{name\}/g, name); }
+  var start = hash(String(agent.id || "") + "|" + String(agent.name || "")) % pool.length;
+  for (var i = 0; i < pool.length; i++) {
+    var t = fill(pool[(start + i) % pool.length]);
+    if (!used[t]) return t;
+  }
+  return fill(pool[start]);
+}
 function entryGreetingText(agent, room) {
   if (!agent) return "";
+  var r = room || activeRoom();
+  var casual = toneOf(r) === "casual";
   var ex = String(agent.expert || "").trim();
-  var casual = toneOf(room || activeRoom()) === "casual";
-  var table = casual ? ENTRY_GREET_CASUAL : ENTRY_GREET;
-  if (table[ex]) return table[ex];
-  /* 매칭되지 않는 직접 만든 AI — 역할이 있으면 ‘역할 맡은 이름’, 없으면 이름만 */
-  var name = String(agent.name || "").trim() || "끼리맘 AI";
-  var role = String(agent.role || "").trim();
-  if (casual) return role ? "안녕! " + role + " 맡은 " + name + " 들어왔어."
-                          : "안녕! " + name + " 들어왔어.";
-  return (role && role !== name)
-    ? "안녕하세요, " + name + "예요. " + role + " 이야기부터 같이 볼게요."
-    : "안녕하세요, " + name + "예요. 이 방에서 함께 볼게요.";
+  /* 프리셋이 아닌 AI(직접 만든 AI · 이름만 있는 AI) — 이름을 대는 인사 */
+  if (!ex || ex === "custom") {
+    var nm = String(agent.name || "").trim() || "끼리맘 AI";
+    return entryGreetPick(casual ? ENTRY_GREET_CUSTOM_CASUAL : ENTRY_GREET_CUSTOM, agent, r, nm);
+  }
+  return entryGreetPick(casual ? ENTRY_GREET_CASUAL : ENTRY_GREET, agent, r, null);
 }
 /* 방에 새로 들어온 끼리맘 AI의 인사 1줄 — 크레딧 0. 입장 액션에서만 1회 부른다.
    여러 명이 한꺼번에 들어올 때 INSERT 가 겹쳐 일부가 빠지지 않도록, 보낸 프로미스를 돌려주고
