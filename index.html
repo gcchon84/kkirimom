@@ -3411,7 +3411,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261123-1510-b365608a";
+var APP_BUILD_VER = "20261123-1512-bee28469";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -13440,7 +13440,7 @@ async function afterSignIn(user) {
     }
     else if (j && j.room_id) {
       /* 입장 뒤 확인 — 비공개 방은 입장 전에 못 읽어서, 접속 명단(외부 AI)이 붙은 뒤 한 번 더 본다 */
-      joinCapCheck = { roomId: j.room_id, wasMember: !!j.wasMember };
+      joinCapCheck = { roomId: j.room_id, wasMember: !!j.wasMember, code: pendingJoin ? pendingJoin.code : "" };
     }
   }
   renderCredit(); renderAccount(); renderExperts(); renderExpertPicker();
@@ -13451,7 +13451,7 @@ async function afterSignIn(user) {
   /* 초대 링크로 새로 들어온 경우 — 서버 인원 + 실시간 접속 AI 를 합쳐 정원을 한 번 더 확인한다.
      (비공개 방은 입장 전에 읽을 수 없어서, 접속 명단까지 붙은 이 시점에 본다) */
   if (joinCapCheck && joinCapCheck.roomId) {
-    var capBlocked = await enforceJoinCapacity(joinCapCheck.roomId, joinCapCheck.wasMember);
+    var capBlocked = await enforceJoinCapacity(joinCapCheck.roomId, joinCapCheck.wasMember, joinCapCheck.code);
     joinCapCheck = null;
     if (capBlocked) return;
   }
@@ -13972,7 +13972,8 @@ function maybeAskAuth() {
    초대 링크(?code=)로 들어오는 사람·외부 AI 는 로그인 없이 바로 들어오므로,
    입장 전(읽을 수 있는 방만)과 입장 뒤(접속 명단이 붙은 뒤)에 자리를 확인한다.
    이미 이 방 멤버였던 새로고침 재입장은 막지 않는다. */
-var joinCapCheck = null;          /* 입장 뒤 확인할 방 — { roomId, wasMember } */
+var joinCapCheck = null;          /* 입장 뒤 확인할 방 — { roomId, wasMember, code } */
+var joinBlockedCodes = {};        /* 정원이 차서 돌려보낸 초대 코드 — 이 화면에서는 다시 입장하지 않는다 */
 /* 내가 이미 멤버인 방 id — 입장 전에 ‘새로 들어오는 사람’인지 가른다 */
 async function myMemberRoomIds() {
   var out = {};
@@ -14026,9 +14027,10 @@ function bounceJoinFull(why) {
 /* 초대 링크로 들어온 뒤 정원 확인 — 넘쳤으면 방에서 나가고 홈으로 돌려보낸다.
    · 이미 이 방 멤버였던 재입장(새로고침)은 그대로 둔다.
    · 새로 들어온 사람은 전체 12명, 외부 AI(&ai=1)로 들어온 경우 AI 8명까지. */
-async function enforceJoinCapacity(roomId, wasMember) {
+async function enforceJoinCapacity(roomId, wasMember, code) {
   /* 기존 멤버의 새로고침 재입장은 사람 정원에서 봐준다 — AI 자리는 다시 본다(외부 AI 가 돌아와 9명이 되는 경우) */
   if (wasMember && !selfIsAI()) return false;
+  if (code && joinBlockedCodes[String(code).toUpperCase()]) return true;
   var r = null;
   state.rooms.forEach(function (x) { if (String(x.id) === String(roomId)) r = x; });
   await waitRoomRoster(roomId, r ? 3500 : 400);
@@ -14050,6 +14052,7 @@ async function enforceJoinCapacity(roomId, wasMember) {
   } catch (e) {}
   if (!overAI && !overAll) return false;
   var why = overAI ? "AI 자리가 가득 찼어요" : "방 정원(최대 " + ROOM_PEOPLE_MAX + "명)이 다 찼어요";
+  if (code) joinBlockedCodes[String(code).toUpperCase()] = Date.now();   /* 이 화면에서 두 번 다시 들어오지 않게 */
   /* 방 목록에 아직 없어도 서버 행 기준으로 나간다 — 멤버십이 남으면 다음 입장도 계속 막힌다 */
   var target = r || { id: roomId, remote: true, name: "", members: [], messages: [] };
   await dbLeaveRoom(target);
@@ -14092,6 +14095,10 @@ async function ensureMembership(roomId) {
 }
 async function joinByCode(code) {
   if (V3.mode !== "cloud" || !V3.signedIn || !V3.ready) return null;
+  /* 정원이 차서 이미 돌려보낸 초대 코드 — 늦게 도착한 두 번째 입장 흐름이 다시 들어오지 않게 */
+  if (joinBlockedCodes[String(code || "").toUpperCase()]) {
+    return { full: true, blocked: true, why: "total" };
+  }
   try {
     var before = await myMemberRoomIds();
     /* 입장 전 확인 — 공개방·이미 멤버인 방은 코드로 먼저 찾아 정원을 볼 수 있다.
