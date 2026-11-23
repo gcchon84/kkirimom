@@ -3454,7 +3454,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261124-0147-05c1420d";
+var APP_BUILD_VER = "20261124-0151-f33e3847";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -10331,7 +10331,7 @@ function rtRenderMods(r) {
   var row = $("rtMods");
   if (!row || !r) return;
   var cands = rtModCandidates(r);
-  var cur = rtModSel || rtAutoModerator(r, rtRoomParts(r));
+  var cur = rtModSel || rtTitleModerator(r, rtRoomParts(r)) || rtAutoModerator(r, rtRoomParts(r));
   var h = "";
   cands.forEach(function (c) {
     h += '<button type="button" class="pick" data-mod="' + esc(c.id) + '" aria-pressed="' +
@@ -10343,7 +10343,7 @@ function rtRenderMods(r) {
 /* 지금 선택된 사회자 — 방장이 누른 칩 → 없으면 자동 추천 */
 function rtPickMod(r) {
   if (rtModSel) return rtModSel;
-  return rtAutoModerator(r, rtRoomParts(r));
+  return rtTitleModerator(r, rtRoomParts(r)) || rtAutoModerator(r, rtRoomParts(r));
 }
 /* 다른 AI 칩을 누르면 그 AI가 이번 토론의 사회자 — 방(r.moderator)에 기억한다 */
 function rtSetMod(id) {
@@ -10758,10 +10758,18 @@ function rtEnsureTitleRoles(r) {
 }
 /* 토론을 시작할 때 쓸 사회자 — 방을 열 때 방 제목으로 정해 둔 역할·사회자를 그대로 쓴다(재호출 없음) */
 function rtTitleModerator(r, parts) {
-  if (!r || !r.dynamicRolesMod) return "";
-  if ((parts || []).indexOf(r.dynamicRolesMod) < 0) return "";
-  var sig = rtRolesSig(r, rtTitleAgenda(r, r.name), r.brand || "", r.dynamicRolesMod);
-  return rtRolesFresh(r, sig) ? r.dynamicRolesMod : "";
+  if (!r) return "";
+  var mod = String(r.dynamicRolesMod || "");
+  if (!mod || (parts || []).indexOf(mod) < 0) {
+    /* 서버 동기화로 필드가 비었을 때 — sig = ver|안건|브랜드|사회자|AI들 의 사회자 자리에서 읽는다 */
+    var seg = String(r.dynamicRolesSig || "").split("|");
+    mod = seg.length >= 5 ? String(seg[3] || "") : "";
+  }
+  if (!mod || (parts || []).indexOf(mod) < 0) return "";
+  var sig = rtRolesSig(r, rtTitleAgenda(r, r.name), r.brand || "", mod);
+  if (!rtRolesFresh(r, sig)) return "";
+  if (!r.dynamicRolesMod) r.dynamicRolesMod = mod;
+  return mod;
 }
 /* 안건 맞춤 역할을 걷어낸다 — 사용자가 역할을 직접 정하는 모드로 바꿀 때. */
 function rtClearDynamicRoles(r) {
