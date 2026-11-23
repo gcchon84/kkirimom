@@ -3457,7 +3457,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261124-0249-e54a6e19";
+var APP_BUILD_VER = "20261124-0252-c8505b5b";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -10617,14 +10617,14 @@ function rtLocalRoleSet(agenda, brand, ids, r, modId) {
   }
   return out;
 }
-async function rtFetchRoles(r, agenda, brand, modId, ids, ms) {
+async function rtFetchRoles(r, agenda, brand, modId, ids, ms, defs) {
   var token = await freshAccessToken();
   if (!token) return null;
   var sig = timeoutSignal(ms || 12000);
   try {
     var res = await postKkiriAi({
       room_id: r.id, mode: "roles", agenda: agenda, brand: brand, moderator_id: modId || "",
-      agents: ids.map(function (id) {
+      agents: (defs && defs.length) ? defs : ids.map(function (id) {
         var a = state.agents[id] || {};
         return { id: id, name: a.name || "", role: a.role || "" };
       })
@@ -10891,6 +10891,7 @@ function rtPrepareCardRoles(r) {
   if (RT_CARD_WAIT[r.id]) return;
   RT_CARD_WAIT[r.id] = 1;
   var ids = expertCatalogFor(r).map(function (x) { return x.id; });
+  var defs = expertCatalogFor(r).map(function (x) { return { id: x.id, name: x.name, role: x.role || "" }; });
   var agenda = rtTitleAgenda(r, r.name || ""), brand = r.brand || "";
   var ask = function (tries) {
     if (RT_CARD[r.id] !== mine) { delete RT_CARD_WAIT[r.id]; return; }
@@ -10899,7 +10900,7 @@ function rtPrepareCardRoles(r) {
       delete RT_CARD_WAIT[r.id];
       return;
     }
-    rtFetchRoles(r, agenda, brand, "", ids, 6000).then(function (roles) {
+    rtFetchRoles(r, agenda, brand, "", ids, 6000, defs).then(function (roles) {
       delete RT_CARD_WAIT[r.id];
       if (!roles || !roles.length || RT_CARD[r.id] !== mine) return;
       /* 카드에서 AI를 이미 넣었다면 서버 이름으로 흔들지 않는다 — 넣은 AI는 카드에서 본 그 이름 그대로 */
