@@ -3454,7 +3454,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261124-0157-ad08e38e";
+var APP_BUILD_VER = "20261124-0201-b13e4245";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -10756,6 +10756,16 @@ function rtEnsureTitleRoles(r) {
   rtTitleEnsuring[r.id] = p;
   return p;
 }
+var rtTitleTimer = {};
+/* 초대 창을 거치지 않고 AI가 방에 더 들어올 때 — 조금 기다렸다 한 번만 역할을 맞춘다 */
+function rtScheduleTitleRoles(r, ms) {
+  if (!r) return;
+  clearTimeout(rtTitleTimer[r.id]);
+  rtTitleTimer[r.id] = setTimeout(function () {
+    delete rtTitleTimer[r.id];
+    try { rtEnsureTitleRoles(r); } catch (e) {}
+  }, ms || 900);
+}
 /* 토론을 시작할 때 쓸 사회자 — 방을 열 때 방 제목으로 정해 둔 역할·사회자를 그대로 쓴다(재호출 없음) */
 function rtTitleModerator(r, parts) {
   if (!r) return "";
@@ -11642,6 +11652,12 @@ function invAttach(id, toPool) {
   r.members.push(id);
   save();
   renderAll();
+  /* 초대 창을 닫은 뒤에 AI가 더 들어온 경우 — 방 제목 역할에 새 AI도 맞춘다.
+     창이 열려 있는 동안에는 닫을 때(finishInviteSession) 한 번에 처리하므로 건너뛴다. */
+  try {
+    var im = $("inviteModal");
+    if (!(im && im.classList.contains("show"))) rtScheduleTitleRoles(r);
+  } catch (e5) {}
   return "room";
 }
 /* 내 AI 탭 — 복사는 집중 모드 지시문+링크 한 번으로 통일(링크만 주는 건 이 방 초대 창에서). */
