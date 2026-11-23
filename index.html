@@ -1181,6 +1181,14 @@
   .mode-chip.cloud{background:var(--brand-tint);color:#C94B66}
   .mode-chip.mock{background:#FFEEF1;color:#3b4bb0}
   .expert-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  /* 초대 카드 '맞춤 AI 팀 세팅 중…' — 역할이 확정되기 전 잠깐 보이는 로딩(2026-11-24) */
+  .expert-setup{grid-column:1 / -1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+    padding:26px 14px;border:1px dashed #FACFD8;border-radius:14px;background:#FFF9FA;text-align:center}
+  .expert-setup b{font-size:12.5px;font-weight:900;color:#5C3543;letter-spacing:-.02em}
+  .expert-setup span{font-size:10.5px;font-weight:700;color:#7C686F}
+  .expert-setup i{width:18px;height:18px;border-radius:50%;border:2.5px solid #FFDBE2;border-top-color:#E86A85;
+    animation:expertSpin .8s linear infinite;display:block}
+  @keyframes expertSpin{to{transform:rotate(360deg)}}
   .expert-card{
     border:1px solid var(--line);border-radius:14px;padding:11px 12px;background:#fff;
     display:flex;align-items:center;gap:10px;text-align:left;cursor:pointer;transition:border-color .14s ease,background .14s ease;
@@ -3457,7 +3465,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261124-0317-4f83934b";
+var APP_BUILD_VER = "20261124-0850-d9e3dcc4";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -6607,7 +6615,19 @@ var RT_MISSION = {
   risk:     { label: "리스크·검증", focus: "확인할 것·되돌리기 어려운 위험만 짧게" },
   converge: { label: "수렴·결론",  focus: "후보를 좁혀 하나로 정하고 결론 내기" }
 };
-function rtMissionText(k) { var m = RT_MISSION[k]; return m ? m.label + " — " + m.focus : ""; }
+/* 결정·찬반 안건의 미션 말 — '실행안 5요소' 대신 판단 관점(2026-11-24) */
+var RT_MISSION_DECISION = {
+  diverge:  { label: "찬성·기회", focus: "이 결정을 했을 때 얻는 것과 실행 쪽 근거 대기" },
+  target:   { label: "고객·직원 시선", focus: "결정했을 때와 안 했을 때 고객·현장이 느끼는 차이 짚기" },
+  build:    { label: "실행 조건·보완", focus: "어떤 조건이면 되는지, 무엇을 보완할지" },
+  risk:     { label: "비용·리스크", focus: "인건비·시간·되돌리기 어려운 위험과 확인할 것" },
+  converge: { label: "수렴·결론", focus: "찬반 근거를 비교해 어느 쪽으로 할지 결론 내기" }
+};
+function rtMissionText(k, r) {
+  var dec = rtAgendaKind(rtSeedAgenda(r || activeRoom())) === "decision";
+  var m = (dec && RT_MISSION_DECISION[k]) || RT_MISSION[k];
+  return m ? m.label + " — " + m.focus : "";
+}
 function rtStepKey(s) {
   if (!s) return "";
   return s.kind === "relay" ? "relay:" + String(s.nick || "").toLowerCase() : "agent:" + String(s.id || "");
@@ -6647,7 +6667,9 @@ function rtMissionPlan(r, parts, people, mod) {
   var mslot = slots.filter(isModSlot)[0];
   if (mslot) map[rtStepKey(mslot)] = "converge";
   if (!others.length) return map;
-  var need = Math.max(1, Math.ceil(slots.length / 2));     /* 발산은 전체 발언자의 절반 이상 */
+  /* 결정·찬반 안건은 '발산 절반 이상'을 강제하지 않는다 — 찬성 1·비용/리스크 1·조건 1로 균형(2026-11-24). */
+  var decAgenda = rtAgendaKind(rtSeedAgenda(r)) === "decision";
+  var need = decAgenda ? 1 : Math.max(1, Math.ceil(slots.length / 2));
   var diverge = 0;
   /* 1) 안건 맞춤 역할이 정한 미션을 먼저 따른다 */
   others.forEach(function (s) {
@@ -6690,6 +6712,11 @@ function rtMissionPlan(r, parts, people, mod) {
   }
   var risks = others.filter(function (s) { return map[rtStepKey(s)] === "risk"; });
   if (risks.length > 1) risks.slice(1).forEach(function (s) { map[rtStepKey(s)] = "build"; });
+  /* 결정 안건에 비용/리스크 담당이 하나도 없으면 발산 하나를 돌려 세운다. */
+  if (decAgenda && others.length >= 2 && !others.some(function (s) { return map[rtStepKey(s)] === "risk"; })) {
+    var dv2 = others.filter(function (s) { return map[rtStepKey(s)] === "diverge"; });
+    if (dv2.length > 1) map[rtStepKey(dv2[dv2.length - 1])] = "risk";
+  }
   if (mslot) map[rtStepKey(mslot)] = "converge";
   return map;
 }
@@ -8298,7 +8325,7 @@ var SPECIFICITY_RULE = "구체성: ‘주변 카페’, ‘현지 맛집’, ‘
 /* 2026-11-23 — 예전엔 ‘구체적인 이름·수치 중 1가지는 반드시’ 라는 지시가 있어서,
    검색 수단이 없는데도 모델이 빈칸을 그럴듯한 숫자로 채웠다(‘예산 50만 원’, ‘정답자 100명’, ‘CTR 2%’).
    그 압력을 빼고 ‘확인된 것만 + [확인 필요]’ 규칙으로 바꿨다. */
-var FACT_RULE = "사실 규칙: 확인된 사실만 말한다. 근거는 ①브랜드·배경 사실 ②방장이 한 말 ③앞선 발언에서 확인된 내용 ④팩트 브리핑뿐이다. 확인하지 않은 수치·예산·전환율·경쟁사 사례는 지어내지 말고 ‘[확인 필요]’ 또는 ‘(추정)’으로 표시한다. 수치를 하나도 못 넣어도 괜찮다.";
+var FACT_RULE = "사실 규칙: 확인된 사실만 말한다. 근거는 ①브랜드·배경 사실 ②방장이 한 말 ③앞선 발언에서 확인된 내용 ④팩트 브리핑뿐이다. 확인하지 않은 수치·예산·전환율·경쟁사 사례는 지어내지 말고 숫자 없이 조건으로 말한다. ‘[확인 필요]’ 같은 표시를 말풍선에 붙이지 않는다. 수치를 하나도 못 넣어도 괜찮다.";
 var BRAND_MISSING_RULE = "브랜드 미정: 방장이 어떤 제품·서비스를 파는지 아직 말하지 않았으면 업종을 추측해 단정하지 않는다(브랜드 이름의 낱말로 업종을 정하지 않는다). 사회자는 첫 발언에서 ‘어떤 제품·서비스를 파는 브랜드인지, 타깃·예산 범위가 있는지’를 반드시 묻는다.";
 /* 방 말투 — 기본은 다정한 친구말(casual). 방 설정에서 존댓말(polite)로 바꾼다.
    어떤 상황에서도 역할·말투(persona) 지시보다 이 규칙이 우선한다. */
@@ -8322,8 +8349,8 @@ function medicalRuleFor() {
    1~2문장(60~80자 안팎) 압축. 서론·추임새 금지, 곧바로 알맹이.
    2026-11-23 — 다만 제안(propose)·구체화(detail)·줄이기(select) 차례와 방장이 ‘구체화·실행안·제대로 정해’를
    요청한 뒤에는 5요소(이름·대상·보상/방법·기간·실행)를 갖춘 120~150자 제안을 허용한다(60~80자 족쇄 예외). */
-var BREVITY_RULE = "반드시 1~2문장(한국어 60~80자 안팎)으로 카톡처럼 짧게 답하세요. ‘좋은 생각이야!’, ‘맞아!’, ‘아까 말한~’ 같은 서론·추임새·앞사람 말 반복 없이 곧바로 들어가고, 브랜드·확인된 사실에 근거한 내용 1가지를 담아 알맹이만 말하세요(근거가 없으면 수치를 지어내지 말고 ‘[확인 필요]’). 번호 목록(1. 2. 3.)은 쓰지 마세요. 이 길이 규칙은 역할·성격 지시보다 우선합니다.";
-var DETAIL_RULE = "3~4문장(공백 포함 120~150자 안팎, 200자 이내)으로 5요소(① 이름 ② 대상 ③ 보상이나 방법 ④ 기간 ⑤ 첫 실행)를 담아 하나의 제안을 완성하세요. 전제 지적·리스크 나열로 끝내지 말고 끝까지 만드세요. 확인하지 않은 수치는 ‘[확인 필요]’로 표시합니다.";
+var BREVITY_RULE = "반드시 1~2문장(한국어 60~80자 안팎)으로 카톡처럼 짧게 답하세요. ‘좋은 생각이야!’, ‘맞아!’, ‘아까 말한~’ 같은 서론·추임새·앞사람 말 반복 없이 곧바로 들어가고, 브랜드·확인된 사실에 근거한 내용 1가지를 담아 알맹이만 말하세요(근거가 없으면 수치를 지어내지 말고 숫자 없이 말하세요). 번호 목록(1. 2. 3.)은 쓰지 마세요. 이 길이 규칙은 역할·성격 지시보다 우선합니다.";
+var DETAIL_RULE = "3~4문장(공백 포함 120~150자 안팎, 200자 이내)으로 5요소(① 이름 ② 대상 ③ 보상이나 방법 ④ 기간 ⑤ 첫 실행)를 담아 하나의 제안을 완성하세요. 전제 지적·리스크 나열로 끝내지 말고 끝까지 만드세요. 확인하지 않은 수치는 숫자로 쓰지 않습니다.";
 /* 방의 말투 — tone 미지정(옛 방·옛 설정)은 친구말로 본다 */
 function toneOf(r) {
   var t = r ? String(r.tone || (r.settings && r.settings.tone) || "").toLowerCase() : "";
@@ -8345,7 +8372,7 @@ function brandLeadBlock(r) {
   });
   if (!lines.length) return head;
   return head + "[팩트 브리핑 — 토론 시작 시 1회 확인된 사실]\n" + lines.join("\n") +
-    "\n· 이 브리핑과 브랜드 사실에 있는 수치·사례만 인용하고, 없는 것은 ‘[확인 필요]’로 표시한다.\n";
+    "\n· 이 브리핑과 브랜드 사실에 있는 수치·사례만 인용하고, 없는 것은 숫자로 만들지 않는다.\n";
 }
 /* 안건 맞춤 역할 블록 — 이 방의 AI 이름·역할·시점을 안건에 맞춰 바꿔 둔 것을 프롬프트 맨 위에 못박는다.
    2026-11-23 지용 님 — “역할 자체를 바꿔줘”. 예전 캐릭터 설명보다 이 역할이 우선한다. */
@@ -8359,7 +8386,7 @@ function dynRoleBlock(r, agent) {
 function missionLeadBlock() {
   var mk = rtStepMissionNow();
   if (!mk) return "";
-  return "[이번 회의 미션 — 역할 경계보다 우선]\n· 이번 미션: ‘" + (RT_MISSION[mk] ? RT_MISSION[mk].label : mk) + "’ — " + rtMissionText(mk) + "\n" +
+  return "[이번 회의 미션 — 역할 경계보다 우선]\n· 이번 미션: ‘" + (RT_MISSION[mk] ? RT_MISSION[mk].label : mk) + "’ — " + rtMissionText(mk, r) + "\n" +
     "· 이 방에서 정한 이름·역할·말투는 그대로 두고, 이번 토론에서 하는 일만 이 미션을 따른다. 역할 성격과 부딪히면 미션을 따른다(예: 검증 성격이어도 미션이 발산이면 실행안을 완성해 낸다).\n";
 }
 function systemFor(agent, phase) {
@@ -8403,7 +8430,7 @@ function systemFor(agent, phase) {
   }
   return brandLeadBlock(r) + dynRoleBlock(r, agent) + missionLeadBlock() + roleBoundBlock(r, agent) + toneRuleFor(r) + "\n" + base + roleDirective(r, agent) + reBlock + modBlock + "\n방: " + r.name + " / 안건: " + (r.agenda || "없음") +
     "\n함께 있는 AI: " + team +
-    "\n규칙: " + toneClause + " " + lengthRule + " 마크다운 제목·이모지 금지. 확인하지 않은 수치·일정·재고를 아는 것처럼 말하지 말고 ‘확인 필요’로 표시한다. 인사·추임새는 넣지 않는다. 앞사람 말은 내용으로 이어받고, 이름 호명은 3~4턴 중 1번 이하로 아껴 쓴다. 자기 이름을 매번 붙이지 않는다." + joinRule +
+    "\n규칙: " + toneClause + " " + lengthRule + " 마크다운 제목·이모지 금지. 확인하지 않은 수치·일정·재고를 아는 것처럼 말하지 않는다. 인사·추임새는 넣지 않는다. 앞사람 말은 내용으로 이어받고, 이름 호명은 3~4턴 중 1번 이하로 아껴 쓴다. 자기 이름을 매번 붙이지 않는다." + joinRule +
     " 네 역할 경계(공감 담당은 감정·위로, 가성비 담당은 제품·비용, 비판 담당은 리스크)를 지키고 다른 역할의 답을 대신하지 않는다. 참여자를 부를 때는 채팅방에 보이는 닉네임으로만 부르고, 실명이나 다른 별명으로 부르지 않는다." +
     roundRule(agent, phase) +
     "\n" + SPECIFICITY_RULE.replace("1~2개 이상 콕 집어 넣어 2~3문장으로", "1가지 이상 콕 집어 넣어 1~2문장으로") + " " + NO_ASSUME_RULE + " " + FACT_RULE;
@@ -8483,6 +8510,7 @@ function isModAgent(agent) {
 function phaseInstruction(phase, r, agent) {
   var core;
   var isMod = isModAgent(agent);
+  var decTurn = rtAgendaKind(rtSeedAgenda(r)) === "decision";
   var prev = lastSpeakerName(r);
   var joinRule = prev
     ? "바로 앞 발언(" + prev + ")의 구체적인 내용을 받아들일 점 1가지 또는 다른 각도 1가지만 보태라. 이름은 부르지 말고 내용으로만 이어라(이름 호명은 3~4턴에 1번 이하). 이미 나온 팁·시간·수치는 말만 바꿔 반복하지 마라."
@@ -8491,20 +8519,30 @@ function phaseInstruction(phase, r, agent) {
     ? "방장이 방향을 바꿨다. 안건 확인·질문 없이, 새 방향에서 바로 첫 제안(이름·수치)을 내고 다음 순서만 한 줄로 알려라. 이미 나온 결론은 다시 말하지 마라."
     : "방장이 방향을 바꿨다. 인사·안건 확인 없이, 새 방향에서 네 역할의 첫 제안(이름·수치)을 바로 말하라. 이미 나온 결론은 다시 말하지 마라.";
   else if (phase === "open") core = isMod
-    ? "사회자로서 ① 안건을 한 줄로 확인 ② 지금 답을 가르는 조건 1개를 방장에게 물음표로 묻기" +
-      (String((r && r.brand) || "").trim()
-        ? "(브랜드·배경은 이미 있으니 예산·기간·타깃 중 빈 것)"
-        : "(브랜드·업종·타깃·예산을 아직 모르니 ‘어떤 제품·서비스를 파는 브랜드인지, 타깃·예산 범위가 있는지’)") +
+    ? "사회자로서 ① 안건을 한 줄로 확인 ② 방장에게 판단에 필요한 핵심 상황 1~2가지를 물음표로 묻기" +
+      (decTurn
+        ? "(지금 팀 인원·규모, 사람에게 쓸 수 있는 인건비 한도, 가장 급한 업무 중 아직 모르는 것)"
+        : (String((r && r.brand) || "").trim()
+          ? "(브랜드·배경은 이미 있으니 예산·기간·타깃 중 빈 것)"
+          : "(브랜드·업종·타깃·예산을 아직 모르니 ‘어떤 제품·서비스를 파는 브랜드인지, 타깃·예산 범위가 있는지’)")) +
       " ③ 발언 순서를 알려라."
     : "안건을 확인하고 진행할 순서를 짧게 알려라.";
   else if (phase === "opinion") core = isMod
     ? "지금까지 나온 의견의 공통점과 이견을 한 줄로 짚고, 아직 아무도 다루지 않은 관점 1개를 던져라."
     : joinRule;
   /* 2026-11-23 — 라운드 흐름 단계(제안·보완·줄이기·구체화·검증). 같은 순서 반복 대신 라운드별 몫을 준다. */
-  else if (phase === "propose") core = "이번 라운드는 발산이다. 안건에 대한 실행 가능한 제안 1개를 이름·대상·보상(방법)·기간·첫 실행의 5요소로 120~150자 안에 완성해 내라. 전제 지적·리스크 나열은 하지 말고 네 캐릭터는 말투로만 살린다. 확인 안 된 수치는 ‘[확인 필요]’로 표시한다."
-  else if (phase === "build") core = "앞에 나온 제안 중 하나를 골라 ‘되게 하려면 필요한 보완점’ 1~2가지만 말하라. 깎아내리기·반대만 하는 말은 금지. 무엇을 어떻게 바꿀지 구체적으로."
-  else if (phase === "select") core = "지금까지 나온 후보를 5요소 기준으로 비교해 가장 실행 가능한 1개(또는 조건부 A/B)를 골라라. 고른 이유와 버린 이유를 한 줄씩. 새 아이디어를 또 내지 마라."
-  else if (phase === "detail") core = "지금까지 나온 제안 하나를 5요소(이름·대상·보상/방법·기간·첫 실행)로 120~150자 안에 구체화하라. 새 후보를 내지 말고 하나를 완성하라."
+  else if (phase === "propose") core = decTurn
+    ? "이번 라운드는 판단이다. 이 안건에서 어느 쪽이 나은지(찬성·반대·조건부 중 하나)를 첫 문장에 분명히 말하고, 근거 1~2가지(비용·시간·사람·리스크)와 현실적 대안 1가지를 120~170자로 써라. 「… 프로젝트」 같은 새 이름이나 없는 부서·팀을 만들지 마라."
+    : "이번 라운드는 발산이다. 안건에 대한 실행 가능한 제안 1개를 이름·대상·보상(방법)·기간·첫 실행의 5요소로 120~150자 안에 완성해 내라. 전제 지적·리스크 나열은 하지 말고 네 캐릭터는 말투로만 살린다. 확인되지 않은 수치는 숫자로 쓰지 마라."
+  else if (phase === "build") core = decTurn
+    ? "앞사람 판단에 붙는 실행 조건 1~2가지를 말하라 — 어떤 조건이면 그쪽으로 하고, 아니면 어떻게 할지. 깎아내리기만 하는 말은 금지."
+    : "앞에 나온 제안 중 하나를 골라 ‘되게 하려면 필요한 보완점’ 1~2가지만 말하라. 깎아내리기·반대만 하는 말은 금지. 무엇을 어떻게 바꿀지 구체적으로."
+  else if (phase === "select") core = decTurn
+    ? "지금까지 나온 의견 중 어느 쪽으로 할지(또는 조건부 A/B)를 골라라. 고른 이유와 버린 이유를 한 줄씩. 새 제안을 또 내지 마라."
+    : "지금까지 나온 후보를 5요소 기준으로 비교해 가장 실행 가능한 1개(또는 조건부 A/B)를 골라라. 고른 이유와 버린 이유를 한 줄씩. 새 아이디어를 또 내지 마라."
+  else if (phase === "detail") core = decTurn
+    ? "앞 라운드에서 나온 선택지·쟁점 하나를 골라 조건(언제·누가·얼마나)·비용·순서를 120~170자로 구체화하라. 새 프로젝트 이름을 또 만들지 마라."
+    : "지금까지 나온 제안 하나를 5요소(이름·대상·보상/방법·기간·첫 실행)로 120~150자 안에 구체화하라. 새 후보를 내지 말고 하나를 완성하라."
   else if (phase === "risk") core = "결정 전에 확인해야 할 것과 되돌리기 어려운 위험만 1가지 짧게 짚어라. 반복 지적·전제 의심만 늘어놓지 마라."
   else if (phase === "issue") core = "지금까지 발언에서 쟁점을 두 개로 압축하고, 각 쟁점에 대한 입장을 한 줄씩 정리하라.";
   else if (phase === "rebuttal") core = isMod
@@ -8512,10 +8550,10 @@ function phaseInstruction(phase, r, agent) {
     : (prev ? "바로 앞 발언(" + prev + ")의 구체적인 1가지에 대꾸해, 받아들일 점 1가지 또는 반박 1가지만 보태라. 이름 없이 내용으로만 받아치고, 같은 말을 반복하지 마라."
             : "직전 발언 중 하나의 내용을 받아 반박하거나 보완하라(이름은 가끔만 부른다). 같은 말을 반복하지 마라.");
   else if (phase === "converge") core = (isMod && rtExtendCan())
-    ? "사회자로서 결론·남은 이견·다음 할 일을 담아 3~4문장으로 정리하라. 필요할 때만 이름으로 짚고(모든 발언자를 나열하지 않는다), 숫자는 ‘제안’ 또는 ‘확인 필요’로 표시하라." +
+    ? "사회자로서 결론·남은 이견·다음 할 일을 담아 3~4문장으로 정리하라. 필요할 때만 이름으로 짚고(모든 발언자를 나열하지 않는다), 숫자는 확인된 것만 쓰고 모르는 값은 조건으로 말하라." +
       " 다만 아직 핵심 쟁점·결론이 부족하다고 판단되면 요약 대신 빠진 쟁점 1~2개를 짚는 짧은 질문을 쓰고 맨 끝에 [연장]을 붙여라(충분하면 붙이지 마라)."
     : isMod
-    ? "사회자로서 결론·남은 이견·다음 할 일을 담아 3~4문장으로 정리하라. 필요할 때만 이름으로 짚고(모든 발언자를 나열하지 않는다), 숫자는 ‘제안’ 또는 ‘확인 필요’로 표시하라."
+    ? "사회자로서 결론·남은 이견·다음 할 일을 담아 3~4문장으로 정리하라. 필요할 때만 이름으로 짚고(모든 발언자를 나열하지 않는다), 숫자는 확인된 것만 쓰고 모르는 값은 조건으로 말하라."
     : "결론·요약을 만들지 말고, 바로 앞사람 의견에 보완·반박 1가지만 보태라. 결론은 사회자가 낸다.";
   else if (phase === "chat") core = toneOf(r) === "polite"
     ? "가벼운 수다입니다. 1~2문장으로 자연스러운 존댓말(~요/~습니다)로 답하세요."
@@ -8525,7 +8563,7 @@ function phaseInstruction(phase, r, agent) {
   /* 2026-11-22 지용 님 — 어느 단계든 카톡처럼 짧게. 사회자는 방향을 잡고 마무리하는 몫이다.
      2026-11-23 — 이번 회의 미션(발산·타깃·보완·리스크·수렴)을 지시 앞에 붙인다. 캐릭터는 유지, 하는 일만 바뀐다. */
   var mk = rtStepMissionNow();
-  var missionLead = mk && mk !== "converge" ? "[이번 회의 미션] " + rtMissionText(mk) + " — 이번 토론에서 네가 하는 일이다(말투·캐릭터는 그대로). " : "";
+  var missionLead = mk && mk !== "converge" ? "[이번 회의 미션] " + rtMissionText(mk, r) + " — 이번 토론에서 네가 하는 일이다(말투·캐릭터는 그대로). " : "";
   return missionLead + core + " " + brevityForTurn(agent, phase) + (dupRetryNote ? " " + dupRetryNote : "");
 }
 
@@ -10510,12 +10548,28 @@ var RT_ROLES_VER = "v1";
 /* 방 제목 기준 안건 (2026-11-24 지용 님)
    ─ 방을 처음 여는 순간부터 방 제목으로 역할을 정한다. 토론 시트의 안건이 비었거나
      방 제목과 같으면 같은 안건으로 보고, 이미 만들어 둔 역할을 그대로 다시 쓴다(재호출 없음). */
+/* 역할 세팅 기준 안건 — 방 설명(r.agenda ← DB description)이 있으면 그것, 없으면 방 이름.
+   (2026-11-24 지용 님: 방 생성 시 역할 세팅 기준과 자동토론 기본 안건 기준을 하나로 —
+    ‘신입사원 채용’ 방에서 안건이 방 설명 그대로여도 역할이 다시 바뀌지 않게) */
+function rtSeedAgenda(r) {
+  var a = String((r && r.agenda) || "").replace(/\s+/g, " ").trim();
+  var n = String((r && r.name) || "").replace(/\s+/g, " ").trim();
+  return a || n;
+}
 function rtTitleAgenda(r, agenda) {
   var a = String(agenda == null ? "" : agenda).replace(/\s+/g, " ").trim();
   var nm = String((r && r.name) || "").replace(/\s+/g, " ").trim();
-  if (!a) return nm || a;
+  if (!a) return rtSeedAgenda(r);
   if (nm && a === nm) return nm;
   return a;
+}
+/* 안건 성격 — '할까 말까' 결정·찬반이면 프로젝트 제안 템플릿을 쓰지 않는다(2026-11-24). */
+function rtAgendaKind(a) {
+  var t = String(a || "").replace(/\s+/g, " ").trim();
+  if (!t) return "other";
+  if (/(할까|말까|뽑을까|뽑아야|뽑을지|채용할까|채용할지|채용해야|채용|뽑기|면접|이직|퇴사|해고|증원|살까|사야|살지|갈까|갈지|할지|해야\s*(할까|하나|하지|될까|겠)|해야겠|괜찮을까|좋을까|나을까|맞을까|어떨까|어떨지|어떻게\s*(할까|하지)|찬성|반대|고를까|고를지|바꿀까|바꿔야|미룰까|미뤄야|들일까|들여야|쓸까|쓸지|vs|VS|할까요|될까요)/.test(t)) return "decision";
+  if (/(기획|제작|프로모션|캠페인|행사|출시|런칭|준비|문서|소개서|보고서|정리|일정|계획|만들|콘텐츠|콘셉트|디자인|개선안|제안서|견적)/.test(t)) return "plan";
+  return "other";
 }
 /* 서버를 못 쓸 때의 기본 세트 — 안건 낱말로 고르고, 모자라면 앞에서부터 돌려 쓴다. */
 var DYN_ROLE_GROUPS = [
@@ -10704,6 +10758,62 @@ function rtApplyRoles(r, roles, sig, modId, idsIn) {
   try { if (isRoomOwner(r)) dbSaveSettings(r); } catch (e) {}
   return true;
 }
+/* =========================================================
+   역할 고정 (2026-11-24 지용 님 최종 확정)
+   ---------------------------------------------------------
+   초대 창에서 한 번 세팅·확정된 역할(r.dynamicRoles)은 방에 들어간 뒤에도,
+   AI 자동토론 시트에서 안건을 다르게 적어 시작해도 **다시 바꾸지 않는다.**
+   바뀐 안건은 서버로 그대로 넘어가 대화 내용만 새 안건에 맞춰진다.
+   새로 들어온 AI만 같은 팀 세트에서 빈 이름을 받는다(기존 이름은 그대로).
+   ========================================================= */
+function rtRolesLocked(r) {
+  if (!r || roleModeOf(r) === "manual") return false;
+  var map = dynRolesOf(r);
+  if (!map) return false;
+  for (var k in map) { if (String((map[k] && map[k].name) || "").trim()) return true; }
+  return false;
+}
+function rtFillMissingRoles(r, agenda, brand, ids, modId) {
+  if (!r || !ids || !ids.length) return false;
+  r.dynamicRoles = (r.dynamicRoles && typeof r.dynamicRoles === "object") ? r.dynamicRoles : {};
+  var missing = ids.filter(function (id) {
+    return !(r.dynamicRoles[id] && String(r.dynamicRoles[id].name || "").trim());
+  });
+  if (!missing.length) return false;
+  var seed = rtSeedAgenda(r) || agenda || "";
+  var base = rtLocalRoleSet(seed, brand || r.brand || "", ids, r, modId || "");
+  var cardMap = null;
+  try { cardMap = rtCardRolesBuild(r); } catch (e) { cardMap = null; }
+  var used = {};
+  Object.keys(r.dynamicRoles).forEach(function (k) {
+    var d = r.dynamicRoles[k];
+    if (d && d.name) used[String(d.name).toLowerCase()] = 1;
+  });
+  var changed = false;
+  missing.forEach(function (id) {
+    var a = state.agents[id] || {};
+    var pid = String(a.expert || "");
+    var x = (cardMap && pid && cardMap[pid]) || base[ids.indexOf(id)] || null;
+    if (!x) return;
+    var name = String(x.name || "").trim().slice(0, 12);
+    if (!name) return;
+    var key = name.toLowerCase(), n = 2, b = name;
+    while (used[key] && n < 6) { name = (b + " " + n).slice(0, 12); key = name.toLowerCase(); n++; }
+    used[key] = 1;
+    r.dynamicRoles[id] = { name: name, role: String(x.role || name).slice(0, 12),
+      desc: String(x.desc || "").slice(0, 90), mission: String(x.mission || "") };
+    changed = true;
+  });
+  if (modId && r.dynamicRoles[modId]) r.dynamicRoles[modId].mission = "converge";
+  if (changed) {
+    r.dynamicRolesMod = String(modId || r.dynamicRolesMod || "");
+    r.dynamicRolesSig = rtRolesSig(r, seed, brand || r.brand || "", r.dynamicRolesMod);
+    try { DYN_ROLE_KEEP[r.id] = { sig: r.dynamicRolesSig, map: r.dynamicRoles }; } catch (e2) {}
+    try { save(); } catch (e3) {}
+    try { if (isRoomOwner(r)) dbSaveSettings(r); } catch (e4) {}
+  }
+  return changed;
+}
 async function rtEnsureRoles(r, agenda, brand, modId, idsIn, opts) {
   if (!RT_ROLES_ON || !r) return { applied: false };
   if (roleModeOf(r) === "manual") return { applied: false };   /* 사용자가 직접 정한 역할은 덮지 않는다 */
@@ -10717,15 +10827,14 @@ async function rtEnsureRoles(r, agenda, brand, modId, idsIn, opts) {
     ids = (idsIn || []).filter(function (id) { var a = state.agents[id]; return !!a && isPresetExpertAgent(a); });
   }
   if (!ids.length) return { applied: false };
-  var sig = rtRolesSig(r, agenda, brand, modId);
-  /* 방 제목으로 이미 정해 둔 역할이 지금 AI 를 모두 덮으면 다시 짓지 않는다 —
-     초대 창에서 고른 AI 이름이 토론 시작 때 갑자기 바뀌지 않게(2026-11-24).
-     시트에 방 제목과 다른 안건을 넣었으면 이전 규칙대로 새로 짓는다. */
-  var coverTitle = agenda === String(rtTitleAgenda(r, r.name || "")).trim() && rtTitleRolesCover(r);
-  if (coverTitle) {
+  /* 한 번 세팅된 역할은 고정 — 안건을 바꿔 시작해도 이름·역할을 다시 짓지 않는다(2026-11-24 지용 님 확정).
+     새로 들어온 AI만 빈 이름을 채운다. */
+  if (rtRolesLocked(r)) {
+    try { rtFillMissingRoles(r, agenda, brand, ids, modId); } catch (e0) {}
     rtRememberTitleMod(r, ids, modId);
-    return { applied: false, reused: true, roles: r.dynamicRoles };
+    return { applied: false, reused: true, locked: true, roles: r.dynamicRoles };
   }
+  var sig = rtRolesSig(r, agenda, brand, modId);
   if (rtRolesFresh(r, sig)) return { applied: false, reused: true, roles: r.dynamicRoles };
   var roles = await rtFetchRoles(r, agenda, brand, modId, ids, (opts && opts.ms) || 0);
   var source = roles ? "server" : "local";
@@ -10769,6 +10878,13 @@ function rtRememberTitleMod(r, ids, modId) {
 function rtEnsureTitleRoles(r) {
   if (!RT_ROLES_ON || !r) return Promise.resolve({ applied: false });
   if (roleModeOf(r) === "manual") return Promise.resolve({ applied: false });
+  /* 이미 확정된 역할은 그대로 — 다시 짓지 않는다(2026-11-24 지용 님 확정). */
+  if (rtRolesLocked(r)) {
+    var lockedIds = rtPresetIdsForRoles(r);
+    try { if (lockedIds.length) rtFillMissingRoles(r, rtSeedAgenda(r), r.brand || "", lockedIds, String(r.dynamicRolesMod || "")); } catch (eL) {}
+    try { rtRememberTitleMod(r, lockedIds, String(r.dynamicRolesMod || "")); } catch (eL2) {}
+    return Promise.resolve({ applied: false, reused: true, locked: true, roles: r.dynamicRoles });
+  }
   var ids = rtPresetIdsForRoles(r);
   if (!ids.length) return Promise.resolve({ applied: false });
   var modId = String(r.dynamicRolesMod || "");
@@ -10816,11 +10932,14 @@ function rtScheduleTitleRoles(r, ms) {
      방에 들어오는 순간 그 역할을 r.dynamicRoles[새 agent id] 로 옮겨 칩·첫 인사·@이름까지 잇는다.
    · 직접 만든 AI·내 AI·수동 역할(roleMode=manual)은 건드리지 않는다.
    ========================================================= */
-var RT_CARD = {};        /* roomId → { key, map: { presetId: {name,role,desc,mission} } } */
-var RT_CARD_WAIT = {};   /* roomId → 서버 보정 진행 중 표시 */
+var RT_CARD = {};        /* roomId → { key, map: { presetId: {name,role,desc,mission} } } — 확정된 카드 역할 */
+var RT_CARD_WAIT = {};   /* roomId → 지금 확정 세트를 만드는 중 */
+var RT_CARD_READY = {};  /* roomId → 확정된 키 — 이 키가 같으면 다시 만들지 않는다 */
+var RT_CARD_PENDING = {};/* roomId → 확정 전 키 — 카드 자리에 '세팅 중' 로딩을 보여 준다 */
 var RT_SHOWN = {};       /* roomId → 지금 카드에 실제로 그려진 역할 — 누른 카드의 이름을 그대로 쓰기 위해 */
+function rtCardPending(r) { return !!(r && r.id && RT_CARD_PENDING[r.id]); }
 function rtCardKey(r) {
-  return [RT_ROLES_VER, rtTitleAgenda(r, r.name || ""), String((r && r.brand) || "").trim(),
+  return [RT_ROLES_VER, rtSeedAgenda(r), String((r && r.brand) || "").trim(),
     String((r && categoryKeyOf(r)) || "")].join("|");
 }
 /* 방 제목·브랜드·주제가 그대로일 때만 유효한 카드 역할 */
@@ -10901,55 +11020,93 @@ function rtAssignCardRole(r, id) {
   try { if (isRoomOwner(r)) dbSaveSettings(r); } catch (e2) {}
   return true;
 }
-/* 초대 창을 여는 순간 — 0ms 로 방 제목 역할을 채우고, 서버 보정은 뒤에서 한 번만 */
+/* 초대 창을 여는 순간 — 확정된 역할 카드를 **딱 한 번만** 그린다(2026-11-24 지용 님).
+   ---------------------------------------------------------
+   제보: 초대 창이 0ms 에 키워드 세트를 먼저 그리고, 2~3초 뒤 서버 응답이 오면 카드 이름이
+   눈앞에서 휙 바뀌었다("바뀌는 느낌이 아니고 처음 세팅이 되는 것처럼 되야지").
+   → 아직 이 방의 역할이 확정되지 않았으면 카드 자리에 '맞춤 AI 팀 세팅 중…' 로딩을 두고
+     서버 응답(최대 2.5초)을 기다린 뒤, 확정 세트로 처음부터 한 번만 그린다.
+     이미 확정된 방(초대 카드 세트·방 역할 r.dynamicRoles)은 로딩 없이 그 세트를 바로 보여 준다. */
+var RT_CARD_MS = 2500;
+/* 방에 이미 확정된 역할(r.dynamicRoles)을 카드용(프리셋 id 기준)으로 옮긴다 */
+function rtCardMapFromDynamic(r) {
+  if (!r) return null;
+  var map = dynRolesOf(r);
+  if (!map) return null;
+  var out = {};
+  rtPresetIdsForRoles(r).forEach(function (lid) {
+    var a = state.agents[lid] || {};
+    var pid = String(a.expert || "");
+    if (!pid) return;
+    var d = map[lid];
+    if (!d || !String(d.name || "").trim()) return;
+    out[pid] = { name: d.name, role: d.role || d.name, desc: d.desc || "", mission: d.mission || "" };
+  });
+  return Object.keys(out).length ? out : null;
+}
 function rtPrepareCardRoles(r) {
   if (!r || !r.id || roleModeOf(r) === "manual") return;
   var key = rtCardKey(r);
   var cur = RT_CARD[r.id];
-  if (cur && cur.map && cur.key === key) return;
-  var map = rtCardRolesBuild(r);
-  if (!Object.keys(map).length) return;
-  var mine = { key: key, map: map };
-  RT_CARD[r.id] = mine;
-  if (RT_CARD_WAIT[r.id]) return;
-  RT_CARD_WAIT[r.id] = 1;
-  var ids = expertCatalogFor(r).map(function (x) { return x.id; });
-  var defs = expertCatalogFor(r).map(function (x) { return { id: x.id, name: x.name, role: x.role || "" }; });
-  var agenda = rtTitleAgenda(r, r.name || ""), brand = r.brand || "";
-  var ask = function (tries) {
-    if (RT_CARD[r.id] !== mine) { delete RT_CARD_WAIT[r.id]; return; }
-    if (!r.remote) {   /* 방이 아직 서버에 안 올라갔으면(개설 직후) 잠깐 뒤 다시 */
-      if (tries < 4) { setTimeout(function () { ask(tries + 1); }, 350); return; }
-      delete RT_CARD_WAIT[r.id];
+  if (RT_CARD_READY[r.id] === key && cur && cur.key === key) return;   /* 이미 확정 — 그대로 그린다 */
+  if (RT_CARD_WAIT[r.id]) return;                                       /* 지금 세팅 중 */
+  /* 방에 이미 확정된 역할이 있으면 로딩 없이 그것으로 */
+  if (rtRolesLocked(r)) {
+    var dm = rtCardMapFromDynamic(r);
+    if (dm) {
+      RT_CARD[r.id] = { key: key, map: dm };
+      RT_CARD_READY[r.id] = key;
+      delete RT_CARD_PENDING[r.id];
       return;
     }
-    rtFetchRoles(r, agenda, brand, "", ids, 6000, defs).then(function (roles) {
-      delete RT_CARD_WAIT[r.id];
-      if (!roles || !roles.length || RT_CARD[r.id] !== mine) return;
-      if (rtRolesOffTopic(roles, r)) return;   /* 다른 주제 낱말이 섞인 세트는 버리고 키워드 세트 유지 */
-      /* 카드에서 AI를 이미 넣었다면 서버 이름으로 흔들지 않는다 — 넣은 AI는 카드에서 본 그 이름 그대로 */
-      var taken = ids.some(function (eid) {
-        var lid = findExpertAgent(eid);
-        return !!lid && r.members.indexOf(lid) > -1;
-      });
-      if (taken) return;
+  }
+  var ids = expertCatalogFor(r).map(function (x) { return x.id; });
+  if (!ids.length) return;
+  var defs = expertCatalogFor(r).map(function (x) { return { id: x.id, name: x.name, role: x.role || "" }; });
+  var agenda = rtSeedAgenda(r), brand = r.brand || "";
+  RT_CARD_WAIT[r.id] = 1;
+  RT_CARD_PENDING[r.id] = key;
+  RT_CARD[r.id] = null;
+  var done = false;
+  var finish = function (roles) {
+    if (done) return;
+    done = true;
+    if (RT_CARD_PENDING[r.id] !== key) return;      /* 그사이 방·안건이 바뀌었으면 버린다 */
+    var map = null;
+    if (roles && roles.length && !rtRolesOffTopic(roles, r)) {
       var sb = {}, used = {};
       roles.forEach(function (x) {
         var name = String(x.name || "").trim().slice(0, 12);
         if (!name) return;
-        var k = name.toLowerCase(), n = 2, base = name;
-        while (used[k] && n < 6) { name = (base + " " + n).slice(0, 12); k = name.toLowerCase(); n++; }
+        var k = name.toLowerCase(), n = 2, b = name;
+        while (used[k] && n < 6) { name = (b + " " + n).slice(0, 12); k = name.toLowerCase(); n++; }
         used[k] = 1;
         sb[x.id] = { name: name, role: String(x.role || name).trim().slice(0, 12),
           desc: String(x.desc || "").trim().slice(0, 90), mission: String(x.mission || "") };
       });
-      if (!Object.keys(sb).length) return;
-      mine.map = sb;
+      if (Object.keys(sb).length) map = sb;
+    }
+    if (!map) map = rtCardRolesBuild(r);            /* 서버가 늦거나 실패 → 키워드 세트로 한 번에 */
+    delete RT_CARD_WAIT[r.id];
+    delete RT_CARD_PENDING[r.id];
+    if (!map || !Object.keys(map).length) return;
+    RT_CARD[r.id] = { key: key, map: map };
+    RT_CARD_READY[r.id] = key;
+    /* 초대 창이 열려 있으면 확정 세트로 다시 그린다 — 다음 프레임에(창의 show 클래스가 붙은 뒤) */
+    requestAnimationFrame(function () {
       var im = $("inviteModal");
       if (im && im.classList.contains("show") && activeRoom() && activeRoom().id === r.id) {
         try { renderExpertPicker(); } catch (e3) {}
       }
-    }, function () { delete RT_CARD_WAIT[r.id]; });
+    });
+  };
+  setTimeout(function () { finish(null); }, RT_CARD_MS + 300);   /* 서버가 끝내 안 오면 키워드 세트 */
+  var ask = function (tries) {
+    if (done) return;
+    if (!r.remote && tries < 3) { setTimeout(function () { ask(tries + 1); }, 300); return; }   /* 개설 직후 서버 반영 대기 */
+    rtFetchRoles(r, agenda, brand, "", ids, RT_CARD_MS, defs).then(function (roles) {
+      finish(roles || null);
+    }, function () { finish(null); });
   };
   ask(0);
 }
@@ -10960,7 +11117,7 @@ function rtTitleRolesCover(r) {
   if (!map) return false;
   var seg = String(r.dynamicRolesSig || "").split("|");
   if (seg.length < 5 || seg[0] !== RT_ROLES_VER) return false;
-  if (seg[1] !== String(rtTitleAgenda(r, r.name || "")).trim()) return false;
+  if (seg[1] !== String(rtSeedAgenda(r)).trim()) return false;
   if (seg[2] !== String(r.brand || "").trim()) return false;
   var ids = rtPresetIdsForRoles(r);
   for (var i = 0; i < ids.length; i++) {
@@ -10982,7 +11139,7 @@ function rtTitleModerator(r, parts) {
   /* 방 제목 역할이 지금 AI 를 모두 덮으면 그때 정한 사회자를 그대로 — 시트와 방이 같은 AI를 가리키게
      (초대 카드로 일부만 들어와 sig 의 AI 목록이 달라져도 어긋나지 않게, 2026-11-24) */
   if (!rtTitleRolesCover(r)) {
-    var sig = rtRolesSig(r, rtTitleAgenda(r, r.name), r.brand || "", mod);
+    var sig = rtRolesSig(r, rtSeedAgenda(r), r.brand || "", mod);
     if (!rtRolesFresh(r, sig)) return "";
   }
   if (!r.dynamicRolesMod) r.dynamicRolesMod = mod;
@@ -14533,6 +14690,17 @@ function renderExpertPicker() {
         + (V3.signedIn ? "내 크레딧 " + creditsNow() : (V3.mode === "local" ? "로컬 데모" : "로그인하면 매일 300크레딧"))
         + "</span></span>";
     }
+  }
+  /* 역할 세트가 아직 확정되지 않았으면 카드 대신 로딩 — 이름이 눈앞에서 바뀌지 않게(2026-11-24) */
+  if (!draft && rtCardPending(r)) {
+    grid.innerHTML = '<div class="expert-setup"><i aria-hidden="true"></i><b>맞춤 AI 팀 세팅 중…</b>'
+      + '<span>방 안건에 맞춰 역할을 정하고 있어요 · 잠시만요</span></div>';
+    delete RT_SHOWN[r.id];
+    var cwP = $("customWrap"); if (cwP) { cwP.hidden = !ownerNow; }
+    renderInviteBalance();
+    var noteP = $("expertNote"); if (noteP) noteP.innerHTML = "";
+    renderCustomTarget();
+    return;
   }
   var inRoom = {};
   (r ? r.members : []).forEach(function (id) {
