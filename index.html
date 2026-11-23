@@ -634,6 +634,9 @@
   .send:hover{background:#46323F}
   .send:active{transform:scale(.98)}
   .send:disabled{opacity:.5;cursor:default}
+  /* 혼자 있을 때 — AI·사람이 없는 방은 입력·전송을 잠근다(초대하면 곧바로 풀린다) */
+  .composer textarea:disabled{background:#FEF4F5;border-color:#F6E1E5;cursor:default}
+  .composer textarea:disabled::placeholder{color:#B696A2}
   .comp-hint{max-width:860px;margin:7px auto 0;font-size:9.5px;line-height:1.55;color:#93a0aa;padding:0 2px;letter-spacing:-.01em}
   .comp-hint b{color:#6E5563;font-weight:900}
   /* 위에서 읽는 중 새 발언이 올라오면 띄우는 플로팅 버튼 */
@@ -3402,7 +3405,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261123-1052-23b3c3e6";
+var APP_BUILD_VER = "20261123-1142-af256643";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -4697,6 +4700,30 @@ function inputPlaceholder(r) {
   if (!r || !r.members.length) return "메시지를 입력해 주세요";
   return "메시지를 입력해 주세요 · @이름으로 부르기";
 }
+/* 혼자 있을 때 — 활성 방에 내장 AI(끼리맘 AI·내 키 AI)가 0명이고,
+   지금 접속 중인 다른 참가자·외부 AI(onlinePeople, 나 제외)도 0명일 때. */
+function roomAlone(r) {
+  if (!r) return false;
+  for (var i = 0; i < r.members.length; i++) if (state.agents[r.members[i]]) return false;
+  return onlinePeople().length === 0;
+}
+/* 방에 나 혼자만 남으면 입력·전송을 잠근다 — AI를 부르거나 누군가 링크로 들어오면
+   renderRoom·renderPresence 가 즉시 풀어 준다(새로고침 없음). */
+function syncComposerLock() {
+  var r = activeRoom();
+  if (!r) return;                     /* 방이 없을 때는 renderRoom 의 빈 상태 분기가 맡는다 */
+  var alone = roomAlone(r);
+  var inp = $("input"), btn = $("sendBtn");
+  if (!inp) return;
+  if (btn) btn.disabled = alone || (run.active && run.mode === "roundtable" && !hostWaitActive());
+  if (inp.disabled !== alone) {
+    inp.disabled = alone;
+    /* 잠긴 방에서 이미 써 둔 글은 보내지 못하니 잠글 때만 비워 둔다 */
+    if (alone && inp.value) { inp.value = ""; try { growInput(); } catch (e) {} }
+  }
+  if (alone) inp.placeholder = "AI나 사람을 먼저 초대해 주세요";
+  else inp.placeholder = hostWaitActive() ? "방장님, 답을 보내면 바로 이어가요" : inputPlaceholder(r);
+}
 function hintFor(r) {
   if (!r) return "";
   var n = r.members.filter(function (id) { return !!state.agents[id]; }).length;
@@ -4792,9 +4819,8 @@ function renderRoom() {
   }
   if (sbt) { sbt.disabled = !rtActive || !ownerNow; sbt.title = rtActive ? "즉시 정지" : ctrlOffTitle; }
   $("sendBtn").textContent = "보내기";
-  $("sendBtn").disabled = run.active && run.mode === "roundtable" && !hostWaitActive();
-  /* 2026-11-23 — 390px 에서 두 줄로 접혀 잘리던 문구를 한 줄짜리로 줄였다 */
-  $("input").placeholder = hostWaitActive() ? "방장님, 답을 보내면 바로 이어가요" : inputPlaceholder(r);
+  /* 혼자 있을 때 입력·전송 잠금 · placeholder(2026-11-23) */
+  syncComposerLock();
   $("compHint").innerHTML = hintFor(r);
   updateMeters();
   renderQuick();
@@ -10381,6 +10407,10 @@ function submitRoomForm() {
   /* 방을 새로 만들거나 옮겼을 때 접속자(Presence)도 이 방으로 따라와야
      초대 링크로 들어온 사람이 서로의 @이름 칩·참여 줄에 보인다. */
   presenceJoin(state.activeRoomId, true);
+  /* 새 빈 방(AI 0명)을 방장이 막 개설했을 때만 초대 창을 한 번 자동으로 연다(2026-11-23 지용 님 요청).
+     [초대하기]를 다시 누르지 않게 하는 것 — 기존 방 열기·초대 링크(?code=) 입장·
+     AI를 골라 만든 방에서는 띄우지 않는다. window.__KKIRI_TEST__ 는 로컬 검증 훅이 끄는 스위치다. */
+  if (!roomForm.id && !members.length && state.activeRoomId && !window.__KKIRI_TEST__) openInviteHub("kkiri");
 }
 /* ---- 방 삭제 / 나가기 (목록의 🗑·✕ 와 방 설정 시트가 같이 쓸니다) ---- */
 /* 확인은 앱 안 모달로 받는다(모바일 웹뷰에서 브라우저 확인창이 막히는 문제 대응). */
@@ -11976,6 +12006,8 @@ function renderPresence() {
     if (sm && !builtIn) sm.innerHTML = aiEmptyHtml();
     var ch = $("compHint");
     if (ch && !run.active) ch.innerHTML = hintFor(ar);
+    /* 접속자가 생기거나 모두 나가면 입력 잠금도 즉시 풀고 잠근다 */
+    syncComposerLock();
     if (!run.active && document.getElementById("emptyRoom")) renderTimeline(false);
   }
 }
@@ -15138,6 +15170,8 @@ function growInput() {
 function onSend() {
   var r = activeRoom();
   if (!r) return;
+  /* 방에 나 혼자만 있으면 보내지 않는다 — Enter·버튼 모두 여기서 막힌다(2026-11-23) */
+  if (roomAlone(r)) { toast("AI나 사람을 먼저 초대해 주세요"); return; }
   var t = $("input").value.trim();
   if (!t) { $("input").focus(); return; }
   /* “보고서 만들어줘” 같은 문서 제작 요청은 일반 채팅 대신 만들기 시트로 안내한다(2026-11-23) */
