@@ -3457,7 +3457,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261124-0252-c8505b5b";
+var APP_BUILD_VER = "20261124-0259-d81b4289";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -10812,6 +10812,7 @@ function rtScheduleTitleRoles(r, ms) {
    ========================================================= */
 var RT_CARD = {};        /* roomId → { key, map: { presetId: {name,role,desc,mission} } } */
 var RT_CARD_WAIT = {};   /* roomId → 서버 보정 진행 중 표시 */
+var RT_SHOWN = {};       /* roomId → 지금 카드에 실제로 그려진 역할 — 누른 카드의 이름을 그대로 쓰기 위해 */
 function rtCardKey(r) {
   return [RT_ROLES_VER, rtTitleAgenda(r, r.name || ""), String((r && r.brand) || "").trim(),
     String((r && categoryKeyOf(r)) || "")].join("|");
@@ -10867,7 +10868,9 @@ function rtAssignCardRole(r, id) {
   if (!exId) return false;
   var cm = rtCardMap(r);
   if (!cm) { cm = rtCardRolesBuild(r); RT_CARD[r.id] = { key: rtCardKey(r), map: cm }; }
-  var x = cm && cm[exId];
+  /* 카드에 그려진 그 이름을 우선 쓴다 — 서버 보정이 누르는 순간에 도착해도 화면에서 본 이름 그대로 */
+  var shown = RT_SHOWN[r.id];
+  var x = (shown && shown[exId]) || (cm && cm[exId]);
   if (!x) return false;
   r.dynamicRoles = (r.dynamicRoles && typeof r.dynamicRoles === "object") ? r.dynamicRoles : {};
   if (r.dynamicRoles[id] && String(r.dynamicRoles[id].name || "").trim()) return true;   /* 이미 이름이 있으면 그대로 */
@@ -10968,6 +10971,7 @@ function rtClearDynamicRoles(r) {
   r.dynamicRolesMod = "";
   try { delete DYN_ROLE_KEEP[r.id]; } catch (e) {}
   try { delete RT_CARD[r.id]; delete RT_CARD_WAIT[r.id]; } catch (e2) {}
+  try { delete RT_SHOWN[r.id]; } catch (e3) {}
 }
 /* 역할이 바뀌었다는 것을 화면에서도 한 줄로 보여 준다. */
 function rtRolesLine(roles) {
@@ -14512,6 +14516,7 @@ function renderExpertPicker() {
   });
   var h = "";
   var catalog = expertCatalogFor(invTarget === "draft" ? { category: roomForm.category } : r);
+  var shownNow = {};
   catalog.forEach(function (ex) {
     var added = draft ? !!(findExpertAgent(ex.id) && inPool(findExpertAgent(ex.id))) : (!!inRoom[ex.id] || !!inRoom[ex.name]);
     var tail = !ownerNow ? (icoHtml("lock", "xs") + " 방장만") : (added ? (draft ? "✓ 목록에 있음 · 눌러서 빼기" : "✓ 이 방에 있음 · 눌러서 빼기") : (draft ? "+ 방에 넣기" : "+ 이 방에 추가"));
@@ -14522,6 +14527,7 @@ function renderExpertPicker() {
     var rl = (dr && String(dr.role || "").trim()) || ex.role;
     var ds = (dr && String(dr.desc || "").trim()) || "";
     if (String(rl) === String(nm)) rl = "";   /* 이름과 같은 역할 라벨은 두 번 쓰지 않는다 */
+    if (dr) shownNow[ex.id] = { name: nm, role: rl || nm, desc: dr.desc || ds, mission: dr.mission || "" };
     h += '<button type="button" class="expert-card' + (added ? " added" : "") + (ownerNow ? "" : " locked") + '" data-expert="' + esc(ex.id) + '"' + (added ? ' aria-disabled="true"' : "") + '>' +
       '<span class="e-top"><span class="e-ava' + (avIconName(ex.id, ex.name) ? " char" : "") + '" aria-hidden="true">' + expertIcoHtml(ex.id, ex.name, ex.avatar, "", "spark") + '</span>' +
       '<span class="e-name"><span class="e-title"><b>' + esc(nm) + '</b>' + engTag(ex.config) + '</span>' + (rl ? '<small>' + esc(rl) + '</small>' : '') + '</span></span>' +
@@ -14529,6 +14535,8 @@ function renderExpertPicker() {
       '<span class="e-foot"><span class="e-add">' + tail + '</span></span></button>';
   });
   grid.innerHTML = h;
+  /* 지금 그려진 카드의 이름을 기억해 둔다 — 누른 카드의 이름 그대로 방에 들어가게 */
+  if (r) RT_SHOWN[r.id] = shownNow;
   /* 방장이 아니면 ‘직접 만들기(끼리맘 AI)’는 잠근다 — 내 AI 탭에서 내 키·웹훅 AI를 넣는 길은 그대로 */
   var cw = $("customWrap");
   if (cw) { cw.hidden = !ownerNow; }
