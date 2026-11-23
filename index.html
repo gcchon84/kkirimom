@@ -3405,7 +3405,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261123-1420-a7ec9714";
+var APP_BUILD_VER = "20261123-1434-36b3191a";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -14030,8 +14030,9 @@ async function enforceJoinCapacity(roomId, wasMember) {
   var capS = await roomCapacityFromServer(roomId);
   var live = roomOccupancy(r);
   var ai = Math.max(Number(capS && capS.ai) || 0, live.ai);
-  var people = Math.max(Number(capS && capS.people) || 0, live.people);
-  var total = Math.max(Number(capS && capS.total) || 0, Math.max(live.total, ai + people));
+  /* 전체 인원은 서버 합계와 화면 합계를 그대로 비교한다 — 서버 멤버 행에 이미 들어 있는 외부 AI 를
+     화면 AI 수와 또 더하면 한 명이 두 번 세어진다(2026-11-23) */
+  var total = Math.max(Number(capS && capS.total) || 0, live.total);
   var overAI = selfIsAI() && ai > ROOM_AI_MAX;
   var overAll = total > ROOM_PEOPLE_MAX && !wasMember;
   if (!overAI && !overAll) return false;
