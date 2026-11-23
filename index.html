@@ -3454,7 +3454,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261124-0151-f33e3847";
+var APP_BUILD_VER = "20261124-0155-646e09e4";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -10727,7 +10727,7 @@ async function rtEnsureRoles(r, agenda, brand, modId, idsIn, opts) {
      · 사용자가 직접 정한 역할(roleMode=manual)·직접 만든 AI·내 AI는 건드리지 않는다.
      · 서버(mode:"roles")는 2초까지만 기다리고, 늦거나 실패하면 키워드 폴백으로 바로 보여 준다.
    ========================================================= */
-var RT_TITLE_ROLES_MS = 2500;   /* 서버 응답을 기다리는 상한 — 방을 열 때 3.5초 이상 끌지 않는다 */
+var RT_TITLE_ROLES_MS = 3200;   /* 서버 응답을 기다리는 상한 — 방을 열 때 3.5초 이상 끌지 않는다(실측 서버 2.6초) */
 var rtTitleEnsuring = {};
 function rtEnsureTitleRoles(r) {
   if (!RT_ROLES_ON || !r) return Promise.resolve({ applied: false });
