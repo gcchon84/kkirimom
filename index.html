@@ -3405,7 +3405,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261123-1142-af256643";
+var APP_BUILD_VER = "20261123-1158-83a49909";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -8790,6 +8790,13 @@ var DOC_LIB = {
   pdf:  ["https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js",
          "https://unpkg.com/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"]
 };
+/* 내려받는 파일의 MIME — 비어 있거나 zip 으로 잡히면 안드로이드·WebAPK 가 확장자를 알아보지 못해
+   ".pptx" 대신 이상한 파일로 저장된다. 형식마다 정확한 값을 붙인다(2026-11-23 지용 님). */
+var DOC_MIME = {
+  pdf: "application/pdf",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+};
 var DOC_FONT_CSS = "https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap";
 var docState = { type: "pdf", busy: false, fontReady: null, libs: {} };
 
@@ -9082,7 +9089,8 @@ async function docMakePdf(doc, metaLine) {
   var blob = await worker.outputPdf("blob");
   host.style.display = "none";
   host.innerHTML = "";
-  return blob;
+  /* html2pdf 가 주는 Blob 은 type 이 비어 있을 때가 있다 — PDF MIME 을 확실히 붙인다 */
+  return new Blob([blob], { type: DOC_MIME.pdf });
 }
 
 /* ---------- PPTX: PptxGenJS 16:9 ---------- */
@@ -9153,7 +9161,10 @@ async function docMakePptx(doc) {
     if (sl.note) s.addText("· " + sl.note, { x: 0.7, y: H - 0.75, w: 8.6, h: 0.4, fontFace: FONT, fontSize: 10, color: MUTED, italic: true });
     s.addText(String(i + 1), { x: W - 0.8, y: H - 0.55, w: 0.4, h: 0.3, fontFace: FONT, fontSize: 10, color: "B7AED0", align: "right" });
   });
-  return await pptx.write({ outputType: "blob" });
+  /* PptxGenJS 의 Blob 출력은 MIME 이 비어 있거나 application/zip 이라 모바일에서 .zip·확장자 없는
+     파일로 저장된다. arraybuffer 로 받아 PPTX MIME 을 직접 붙여 돌려준다(2026-11-23). */
+  var buf = await pptx.write({ outputType: "arraybuffer" });
+  return new Blob([buf], { type: DOC_MIME.pptx });
 }
 
 /* ---------- XLSX: SheetJS ---------- */
@@ -9196,7 +9207,7 @@ async function docMakeXlsx(doc) {
     XLSX.utils.book_append_sheet(wb, ws2, "요약");
   }
   var out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-  return new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  return new Blob([out], { type: DOC_MIME.xlsx });
 }
 
 /* ---------- 공통: 파일 만들기·저장 ---------- */
@@ -9210,16 +9221,26 @@ function docFilename(title, type) {
   return base + (type === "pptx" ? ".pptx" : type === "xlsx" ? ".xlsx" : ".pdf");
 }
 function docSaveBlob(blob, name) {
+  if (!blob) return;
+  /* 확장자에 맞는 MIME 을 Blob 에 확실히 입힌다 — 모바일 다운로드 관리자가 형식을 알아보는 근거다 */
+  var ext = String(name || "").split(".").pop().toLowerCase();
+  var type = DOC_MIME[ext] || blob.type || "application/octet-stream";
+  if (blob.type !== type) {
+    try { blob = blob.slice ? blob.slice(0, blob.size, type) : new Blob([blob], { type: type }); } catch (e) {}
+  }
   var url = URL.createObjectURL(blob);
   var a = document.createElement("a");
   a.href = url;
   a.download = name;
+  a.type = type;          /* a.type — 브라우저·다운로드 관리자에게 파일 형식을 알린다 */
+  a.rel = "noopener";
+  a.style.display = "none";
   document.body.appendChild(a);
   a.click();
-  setTimeout(function () {
-    if (a.parentNode) a.parentNode.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, 1500);
+  /* 앵커는 바로 치우고, objectURL 은 모바일 다운로드 관리자가 다 받을 때까지 살려 둔다.
+     1.5초는 짧아 받기 시작 전에 끊겨 빈 파일·이상한 파일이 되곤 했다(2026-11-23). */
+  setTimeout(function () { if (a.parentNode) a.parentNode.removeChild(a); }, 0);
+  setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
 }
 function docSizeLabel(doc, type) {
   if (type === "pptx") return "슬라이드 " + ((doc && doc.slides) ? doc.slides.length : 0) + "장";
