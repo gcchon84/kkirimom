@@ -3454,7 +3454,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261123-2520-6fd1c721";
+var APP_BUILD_VER = "20261124-0146-2d223c98";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -10080,6 +10080,14 @@ function toast(msg) {
   clearTimeout(toast._t);
   toast._t = setTimeout(function () { el.classList.remove("show"); }, 2400);
 }
+/* 같은 문구의 토스트만 바로 내린다 — 일이 끝난 뒤 ‘하고 있어요’ 안내가 남지 않게 */
+function toastHide(msg) {
+  var el = $("toast");
+  if (!el) return;
+  if (msg != null && String(el.textContent || "") !== String(msg)) return;
+  clearTimeout(toast._t);
+  el.classList.remove("show");
+}
 function openSidebar() {
   $("sidebar").classList.add("open");
   var b = $("backdrop");
@@ -10125,6 +10133,8 @@ function selectRoom(id) {
     presenceJoin(id);
   }
   aiIdleStart();
+  /* 방 제목에 맞춘 역할이 아직 없는 방(이전 빌드에서 만든 방·역할이 비워진 방)은 열 때 한 번 정한다. */
+  if (target && !dynRolesOf(target)) rtEnsureTitleRoles(target);
 }
 
 /* 방의 역할 배정 방식 바꾸기 — 사이드바 '역할 자동/수동'과 방 설정이 같이 씁니다. */
@@ -10465,7 +10475,7 @@ function rtStart() {
   var rounds = rtPickRounds();
   /* 시트에서 방장이 직접 누른 사회자 칩만 ‘고른 사회자’로 넘긴다 — 누른 칩이 없으면 자동 추천에 맡긴다
      (자동 추천이 외부 AI로 가서 사회자 오프닝이 비던 문제, 2026-11-23). */
-  plan.moderator = rtModSel || rtAutoModerator(r, plan.participants);
+  plan.moderator = rtModSel || rtTitleModerator(r, plan.participants) || rtAutoModerator(r, plan.participants);
   plan.moderatorPicked = !!rtModSel;
   if (plan.participants.length + plan.people.length < 2) { toast("AI가 2명 이상이면 AI 자동토론을 켤 수 있어요 · 한 명이면 @이름으로 부르면 바로 답해요"); return; }
   var brand = rtBrandFromSheet();
@@ -10488,6 +10498,16 @@ function rtBrandFromSheet() {
    ========================================================= */
 var RT_ROLES_ON = true;
 var RT_ROLES_VER = "v1";
+/* 방 제목 기준 안건 (2026-11-24 지용 님)
+   ─ 방을 처음 여는 순간부터 방 제목으로 역할을 정한다. 토론 시트의 안건이 비었거나
+     방 제목과 같으면 같은 안건으로 보고, 이미 만들어 둔 역할을 그대로 다시 쓴다(재호출 없음). */
+function rtTitleAgenda(r, agenda) {
+  var a = String(agenda == null ? "" : agenda).replace(/\s+/g, " ").trim();
+  var nm = String((r && r.name) || "").replace(/\s+/g, " ").trim();
+  if (!a) return nm || a;
+  if (nm && a === nm) return nm;
+  return a;
+}
 /* 서버를 못 쓸 때의 기본 세트 — 안건 낱말로 고르고, 모자라면 앞에서부터 돌려 쓴다. */
 var DYN_ROLE_GROUPS = [
   { re: /채용|신입|인사|면접|뽑|온보딩|직원|팀장|인력|구인|조직/, roles: [
@@ -10590,10 +10610,10 @@ function rtLocalRoleSet(agenda, brand, ids, r, modId) {
   }
   return out;
 }
-async function rtFetchRoles(r, agenda, brand, modId, ids) {
+async function rtFetchRoles(r, agenda, brand, modId, ids, ms) {
   var token = await freshAccessToken();
   if (!token) return null;
-  var sig = timeoutSignal(12000);
+  var sig = timeoutSignal(ms || 12000);
   try {
     var res = await postKkiriAi({
       room_id: r.id, mode: "roles", agenda: agenda, brand: brand, moderator_id: modId || "",
@@ -10671,9 +10691,11 @@ function rtApplyRoles(r, roles, sig, modId, idsIn) {
   try { if (isRoomOwner(r)) dbSaveSettings(r); } catch (e) {}
   return true;
 }
-async function rtEnsureRoles(r, agenda, brand, modId, idsIn) {
+async function rtEnsureRoles(r, agenda, brand, modId, idsIn, opts) {
   if (!RT_ROLES_ON || !r) return { applied: false };
   if (roleModeOf(r) === "manual") return { applied: false };   /* 사용자가 직접 정한 역할은 덮지 않는다 */
+  /* 안건이 비었거나 방 제목과 같으면 방 제목이 안건이다 — 방을 열 때 만든 역할을 그대로 쓴다 */
+  agenda = rtTitleAgenda(r, agenda);
   var ids = (idsIn && idsIn.length) ? idsIn.filter(function (id) { var a = state.agents[id]; return !!a && isPresetExpertAgent(a); }) : [];
   if (!ids.length) ids = rtPresetIdsForRoles(r);
   /* 시작 직후 서버 동기화가 state.agents 를 잠깐 갈아 끼우면 AI 를 못 찾는다 — 한 번 쉬었다 다시 본다. */
@@ -10684,18 +10706,69 @@ async function rtEnsureRoles(r, agenda, brand, modId, idsIn) {
   if (!ids.length) return { applied: false };
   var sig = rtRolesSig(r, agenda, brand, modId);
   if (rtRolesFresh(r, sig)) return { applied: false, reused: true, roles: r.dynamicRoles };
-  var roles = await rtFetchRoles(r, agenda, brand, modId, ids);
+  var roles = await rtFetchRoles(r, agenda, brand, modId, ids, (opts && opts.ms) || 0);
   var source = roles ? "server" : "local";
   if (!roles) roles = rtLocalRoleSet(agenda, brand, ids, r, modId);
   if (!roles || !roles.length) return { applied: false };
+  /* 이 역할을 정한 사회자 — 토론을 시작할 때 같은 사회자를 써서 역할을 다시 부르지 않게 남긴다 */
+  var prevMod = r.dynamicRolesMod;
+  r.dynamicRolesMod = String(modId || "");
   var ok = rtApplyRoles(r, roles, sig, modId, ids);
+  if (!ok) r.dynamicRolesMod = prevMod;
   return { applied: ok, source: source, roles: r.dynamicRoles };
+}
+/* =========================================================
+   방을 여는 순간의 역할 — 방 제목으로 먼저 정한다 (2026-11-24 지용 님)
+   ---------------------------------------------------------
+   제보: 방 2개(‘신입사원 뽑을까 말까’·‘12월 마케팅 프로모션’)를 개설하자마자 보니
+   참여 칩·첫 입장 인사가 둘 다 기본 이름(기획자·마케터·리서처·검증가·비판가)이었다.
+   원인: 역할이 ‘AI 자동토론’을 누를 때(rtBeginWithBrief)만 만들어졌다.
+   → 이 방에 프리셋 AI가 들어오는 순간 방 제목으로 역할을 정하고, 그 이름으로 칩·인사·@이름을 그린다.
+     · 사용자가 직접 정한 역할(roleMode=manual)·직접 만든 AI·내 AI는 건드리지 않는다.
+     · 서버(mode:"roles")는 2초까지만 기다리고, 늦거나 실패하면 키워드 폴백으로 바로 보여 준다.
+   ========================================================= */
+var RT_TITLE_ROLES_MS = 2000;
+var rtTitleEnsuring = {};
+function rtEnsureTitleRoles(r) {
+  if (!RT_ROLES_ON || !r) return Promise.resolve({ applied: false });
+  if (roleModeOf(r) === "manual") return Promise.resolve({ applied: false });
+  var ids = rtPresetIdsForRoles(r);
+  if (!ids.length) return Promise.resolve({ applied: false });
+  var modId = String(r.dynamicRolesMod || "");
+  if (ids.indexOf(modId) < 0) modId = rtAutoModerator(r, ids) || ids[0];
+  /* 이미 방 제목으로 만든 역할이 있으면 그대로 — 같은 방을 다시 열 때 서버를 부르지 않는다 */
+  if (rtRolesFresh(r, rtRolesSig(r, rtTitleAgenda(r, r.name), r.brand || "", modId))) {
+    return Promise.resolve({ applied: false, reused: true, roles: r.dynamicRoles });
+  }
+  if (rtTitleEnsuring[r.id]) return rtTitleEnsuring[r.id];   /* 초대 직후 인사 + 방 열기가 겹쳐도 한 번만 */
+  var note = "🎭 방 제목에 맞춰 AI 역할을 정하고 있어요";
+  toast(note);
+  var p = rtEnsureRoles(r, r.name, r.brand || "", modId, ids, { ms: RT_TITLE_ROLES_MS }).then(function (res) {
+    delete rtTitleEnsuring[r.id];
+    toastHide(note);
+    /* 바뀐 역할 이름으로 칩·말풍선을 다시 그린다 — 첫 입장 인사는 이 약속 뒤에 시작한다 */
+    if (res && res.applied) {
+      if (activeRoom() && activeRoom().id === r.id) renderAll();
+      else save();
+    }
+    return res;
+  }, function () { delete rtTitleEnsuring[r.id]; toastHide(note); return { applied: false }; });
+  rtTitleEnsuring[r.id] = p;
+  return p;
+}
+/* 토론을 시작할 때 쓸 사회자 — 방을 열 때 방 제목으로 정해 둔 역할·사회자를 그대로 쓴다(재호출 없음) */
+function rtTitleModerator(r, parts) {
+  if (!r || !r.dynamicRolesMod) return "";
+  if ((parts || []).indexOf(r.dynamicRolesMod) < 0) return "";
+  var sig = rtRolesSig(r, rtTitleAgenda(r, r.name), r.brand || "", r.dynamicRolesMod);
+  return rtRolesFresh(r, sig) ? r.dynamicRolesMod : "";
 }
 /* 안건 맞춤 역할을 걷어낸다 — 사용자가 역할을 직접 정하는 모드로 바꿀 때. */
 function rtClearDynamicRoles(r) {
   if (!r) return;
   r.dynamicRoles = null;
   r.dynamicRolesSig = "";
+  r.dynamicRolesMod = "";
   try { delete DYN_ROLE_KEEP[r.id]; } catch (e) {}
 }
 /* 역할이 바뀌었다는 것을 화면에서도 한 줄로 보여 준다. */
@@ -12549,6 +12622,8 @@ function dbApply(roomRows, agentRows, fresh) {
       dynamicRoles: (s.dynamicRoles && typeof s.dynamicRoles === "object" && !Array.isArray(s.dynamicRoles)) ? s.dynamicRoles
         : ((p && p.dynamicRoles) || null),
       dynamicRolesSig: typeof s.dynamicRolesSig === "string" ? s.dynamicRolesSig : ((p && p.dynamicRolesSig) || ""),
+      /* 이 역할을 정한 사회자 — 토론 시작 때 같은 사회자를 써서 역할을 다시 부르지 않는다 */
+      dynamicRolesMod: typeof s.dynamicRolesMod === "string" ? s.dynamicRolesMod : ((p && p.dynamicRolesMod) || ""),
       settings: { category: s.category || "", tone: s.tone === "polite" ? "polite" : "casual" },
       discussingAt: Number(s.discussingAt) || 0,
       /* 방장이 켠 자동토론의 진행 지점 — 다른 참가자도 자리 비움·자동 종료를 알고,
@@ -13216,7 +13291,8 @@ async function dbUpdateRoom(r, members) {
       settings: { emoji: r.emoji, mode: "mention", roleMode: roleModeOf(r), roles: r.roles || {}, maxTurns: r.maxTurns, rounds: r.rounds, budget: r.budget, category: categoryKeyOf(r), tone: toneOf(r), aiPeople: r.aiPeople || [],
                   brand: String(r.brand || "").slice(0, 300),
                   dynamicRoles: (r.dynamicRoles && typeof r.dynamicRoles === "object") ? r.dynamicRoles : {},
-                  dynamicRolesSig: String(r.dynamicRolesSig || "").slice(0, 300) }
+                  dynamicRolesSig: String(r.dynamicRolesSig || "").slice(0, 300),
+                  dynamicRolesMod: String(r.dynamicRolesMod || "").slice(0, 60) }
     }).eq("id", r.id);
     if (res.error) dbToast(dbErrorText("방 설정을 저장하지 못했어요", res.error, "방 설정을 바꿀 수 없어요 · 방장·멤버만 바꿀 수 있어요"));
     for (var i = 0; i < members.length; i++) await dbSetMember(r.id, members[i], true);
@@ -13457,6 +13533,8 @@ function dbSaveSettings(r) {
                    새로고침·재입장·다른 참가자 화면에서도 같은 이름으로 보이게 방 설정에 남긴다. */
                 dynamicRoles: (r.dynamicRoles && typeof r.dynamicRoles === "object") ? r.dynamicRoles : {},
                 dynamicRolesSig: String(r.dynamicRolesSig || "").slice(0, 300),
+                /* 이 역할을 정한 사회자(재호출 방지) */
+                dynamicRolesMod: String(r.dynamicRolesMod || "").slice(0, 60),
                 /* 2026-11-22 — 이 방의 사회자. 새로고침·재입장해도 사회자가 바뀌지 않게 저장한다. */
                 moderator: String(r.moderator || ""),
                 /* 방장이 시트에서 직접 고른 사회자인가 — 자동 추천과 구분해 새로고침 뒤에도 유지(2026-11-23) */
@@ -15837,7 +15915,9 @@ function greetAgentOnEntry(agentId, room) {
 function greetAgentsOnEntry(ids, room) {
   var list = (ids || []).slice();
   if (!list.length) return Promise.resolve(true);
-  var chain = sleep(170);
+  /* 인사 전에 방 제목으로 역할부터 정한다(2026-11-24) — 첫 인사·참여 칩이 기본 이름으로 나가지 않게.
+     역할이 이미 있으면 바로 넘어간다(네트워크 호출 없음). */
+  var chain = rtEnsureTitleRoles(room || activeRoom()).then(function () { return sleep(170); }, function () { return sleep(170); });
   list.forEach(function (id, i) {
     chain = chain.then(function () {
       return Promise.resolve().then(function () { return greetAgentOnEntry(id, room); }).catch(function () { return false; });
