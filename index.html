@@ -3301,7 +3301,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261123-1020-465d503f";
+var APP_BUILD_VER = "20261123-1040-c828e7a9";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -6853,7 +6853,7 @@ function startRoundtable(opts) {
   run.autoBy = String(r.hostName || nick());
   run.cpIdx = 0;
   run.cpAt = Date.now();
-  run.awayAt = 0; run.awayPausedBefore = false; run.awayQuiet = false;
+  run.awayAt = 0; run.awayPausedBefore = false; run.awayQuiet = false; run.awayCoolAt = 0;
   run.annTurn = null;                 /* 이번 토론의 차례 안내 중복 체크는 새로 시작 */
   run.waitHost = null; run.hostNoPause = false; run.hostAnsweredAt = 0;   /* 사회자 질문 대기는 토론마다 새로 */
   if (run.awayTimer) { clearTimeout(run.awayTimer); run.awayTimer = null; }
