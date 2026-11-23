@@ -3452,7 +3452,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261123-2335-e12d7d1a";
+var APP_BUILD_VER = "20261123-2430-f204eada";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -4345,9 +4345,31 @@ function roleModeOf(r) { return r && r.roleMode === "manual" ? "manual" : "auto"
    · 직접 만든 AI·내 AI·수동 역할(roleMode=manual)은 건드리지 않는다.
    · 새로고침·재입장에도 유지되도록 방 settings.dynamicRoles 로 서버에 남긴다.
    ========================================================= */
+/* 이 화면에서 방금 정한 역할 — 서버 동기화(dbApply)가 방 객체를 새로 만들어도 화면이 잠깐 원래 이름으로
+   돌아가지 않게 방 id 별로 한 번 더 들고 있는다(새로고침하면 비고, 그때는 서버 설정에서 읽는다). */
+var DYN_ROLE_KEEP = {};
+function dynRolesOf(r) {
+  if (!r) return null;
+  var map = r.dynamicRoles, any = false;
+  if (map) { for (var k in map) { any = true; break; } }
+  if (!any) {
+    var keep = DYN_ROLE_KEEP[r.id];
+    if (keep && keep.map) {
+      for (var k2 in keep.map) { any = true; break; }
+      if (any) {
+        r.dynamicRoles = keep.map;
+        if (!r.dynamicRolesSig) r.dynamicRolesSig = keep.sig || "";
+        map = keep.map;
+      }
+    }
+  }
+  return map || null;
+}
 function dynRoleOf(r, id) {
-  if (!r || !r.dynamicRoles || !id) return null;
-  var d = r.dynamicRoles[id];
+  if (!r || !id) return null;
+  var map = dynRolesOf(r);
+  if (!map) return null;
+  var d = map[id];
   if (!d || typeof d !== "object") return null;
   return d;
 }
@@ -10123,6 +10145,7 @@ function applyRoleMode(mode, quiet) {
     r.roles = next;
   }
   r.roleMode = mode;
+  if (mode === "manual") rtClearDynamicRoles(r);   /* 직접 정한 역할이 우선 — 안건 맞춤 이름은 걷어낸다 */
   save();
   dbSaveSettings(r);
   renderAll();
@@ -10532,8 +10555,11 @@ function rtRolesSig(r, agenda, brand, modId) {
     rtPresetIdsForRoles(r).join(",")].join("|");
 }
 function rtRolesFresh(r, sig) {
-  if (!r || !r.dynamicRoles || r.dynamicRolesSig !== sig) return false;
-  return Object.keys(r.dynamicRoles).length > 0;
+  if (!r || r.dynamicRolesSig !== sig) return false;
+  var map = dynRolesOf(r);
+  if (!map) return false;
+  for (var k in map) return true;
+  return false;
 }
 /* 서버가 없을 때 — 키워드 세트에서 참여 수만큼 골라 사회자는 중립으로 바꾼다. */
 function rtLocalRoleSet(agenda, brand, ids, r, modId) {
@@ -10593,9 +10619,11 @@ async function rtFetchRoles(r, agenda, brand, modId, ids) {
   }
 }
 /* 결과를 이 방에만 적용 — 이름 중복을 풀고, 사회자는 중립 이름으로 고정한다. */
-function rtApplyRoles(r, roles, sig, modId) {
+function rtApplyRoles(r, roles, sig, modId, idsIn) {
   if (!r || !roles || !roles.length) return false;
-  var ids = rtPresetIdsForRoles(r);
+  /* 토론 시작 때 넘긴 참여 목록을 우선 쓴다 — 시작 직후 서버 동기화로 state.agents 가 잠깐 비어도 역할이 붙게. */
+  var ids = (idsIn && idsIn.length) ? idsIn.filter(function (id) { var a = state.agents[id]; return !!a && isPresetExpertAgent(a); }) : [];
+  if (!ids.length) ids = rtPresetIdsForRoles(r);
   var used = {};
   var people = [];
   try { people = relayPeopleOf(r) || []; } catch (e) {}
@@ -10635,23 +10663,39 @@ function rtApplyRoles(r, roles, sig, modId) {
   }
   r.dynamicRoles = map;
   r.dynamicRolesSig = sig;
+  try { DYN_ROLE_KEEP[r.id] = { sig: sig, map: map }; } catch (e) {}
   save();
   try { if (isRoomOwner(r)) dbSaveSettings(r); } catch (e) {}
   return true;
 }
-async function rtEnsureRoles(r, agenda, brand, modId) {
-  if (!RT_ROLES_ON || !r) return { applied: false };
-  if (roleModeOf(r) === "manual") return { applied: false };   /* 사용자가 직접 정한 역할은 덮지 않는다 */
-  var ids = rtPresetIdsForRoles(r);
-  if (!ids.length) return { applied: false };
+async function rtEnsureRoles(r, agenda, brand, modId, idsIn) {
+  function log(x) { try { (window.__DYN_LOG = window.__DYN_LOG || []).push(x); } catch (e) {} }
+  if (!RT_ROLES_ON || !r) { log({ stop: "off" }); return { applied: false }; }
+  if (roleModeOf(r) === "manual") { log({ room: r.id, stop: "manual" }); return { applied: false }; }   /* 사용자가 직접 정한 역할은 덮지 않는다 */
+  var ids = (idsIn && idsIn.length) ? idsIn.filter(function (id) { var a = state.agents[id]; return !!a && isPresetExpertAgent(a); }) : [];
+  if (!ids.length) ids = rtPresetIdsForRoles(r);
+  /* 시작 직후 서버 동기화가 state.agents 를 잠깐 갈아 끼우면 AI 를 못 찾는다 — 한 번 쉬었다 다시 본다. */
+  for (var wait = 0; !ids.length && wait < 2 && (idsIn && idsIn.length); wait++) {
+    await sleep(600);
+    ids = (idsIn || []).filter(function (id) { var a = state.agents[id]; return !!a && isPresetExpertAgent(a); });
+  }
+  if (!ids.length) { log({ room: r.id, stop: "no-preset", members: (r.members || []).length }); return { applied: false }; }
   var sig = rtRolesSig(r, agenda, brand, modId);
   if (rtRolesFresh(r, sig)) return { applied: false, reused: true, roles: r.dynamicRoles };
   var roles = await rtFetchRoles(r, agenda, brand, modId, ids);
   var source = roles ? "server" : "local";
   if (!roles) roles = rtLocalRoleSet(agenda, brand, ids, r, modId);
   if (!roles || !roles.length) return { applied: false };
-  var ok = rtApplyRoles(r, roles, sig, modId);
+  var ok = rtApplyRoles(r, roles, sig, modId, ids);
+  log({ room: r.id, ids: ids.length, src: source, ok: ok, n: Object.keys(r.dynamicRoles || {}).length });
   return { applied: ok, source: source, roles: r.dynamicRoles };
+}
+/* 안건 맞춤 역할을 걷어낸다 — 사용자가 역할을 직접 정하는 모드로 바꿀 때. */
+function rtClearDynamicRoles(r) {
+  if (!r) return;
+  r.dynamicRoles = null;
+  r.dynamicRolesSig = "";
+  try { delete DYN_ROLE_KEEP[r.id]; } catch (e) {}
 }
 /* 역할이 바뀌었다는 것을 화면에서도 한 줄로 보여 준다. */
 function rtRolesLine(roles) {
@@ -10708,7 +10752,7 @@ async function rtBeginWithBrief(r, brand, agenda, plan, rounds) {
   }
   /* 역할 짜기와 팩트 브리핑을 동시에 보낸다 — 둘 다 토론 시작 전 1회(대기 5~8초). */
   if (RT_ROLES_ON || RT_BRIEF_ON) toast("안건에 맞는 역할과 최신 사실을 확인하고 있어요 · 5~8초");
-  var jobs = [RT_ROLES_ON ? rtEnsureRoles(r, agenda, brand, plan.moderator) : Promise.resolve({ applied: false })];
+  var jobs = [RT_ROLES_ON ? rtEnsureRoles(r, agenda, brand, plan.moderator, plan.participants) : Promise.resolve({ applied: false })];
   jobs.push(RT_BRIEF_ON ? rtFetchBrief(r, agenda, brand) : Promise.resolve(null));
   var done = await Promise.all(jobs);
   if (!activeRoom() || activeRoom().id !== r.id) return;
