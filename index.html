@@ -1196,6 +1196,9 @@
   .expert-card .e-name .eng{font-size:8px;padding:2px 4px 1.5px}
   .expert-card .e-name b{display:block;font-size:12px;font-weight:900;letter-spacing:-.02em}
   .expert-card .e-name small{display:block;font-size:9px;font-weight:800;color:#C94B66;margin-top:1px}
+  /* 방 제목에 맞춰 바뀐 역할의 한 줄 설명 — 역할이 바뀌었을 때만 카드 아래에 붙는다(2026-11-24) */
+  .expert-card{flex-wrap:wrap}
+  .expert-card .e-desc{flex:0 0 100%;margin-top:2px;font-size:9px;line-height:1.45;color:#7C6470;letter-spacing:-.01em;word-break:keep-all;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
   .expert-card p{font-size:10px;line-height:1.62;color:#7C6470;letter-spacing:-.01em;word-break:keep-all}
   .expert-card .e-foot{flex:0 0 auto;display:flex;align-items:center;justify-content:flex-end;gap:6px}
   .expert-card .e-cost{font-size:9px;font-weight:900;color:#6E5563;background:#FBEDF0;border-radius:999px;padding:3px 7px;white-space:nowrap}
@@ -3454,7 +3457,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261124-0201-b13e4245";
+var APP_BUILD_VER = "20261124-0249-e54a6e19";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -4370,10 +4373,14 @@ function dynRolesOf(r) {
 function dynRoleOf(r, id) {
   if (!r || !id) return null;
   var map = dynRolesOf(r);
-  if (!map) return null;
-  var d = map[id];
-  if (!d || typeof d !== "object") return null;
-  return d;
+  var d = map && map[id];
+  if (d && typeof d === "object") return d;
+  /* 초대 창에서 미리 잡아 둔 방 제목 역할 — 방에 들어온 프리셋 AI 는 카드에서 본 이름 그대로 */
+  if (roleModeOf(r) === "manual") return null;
+  var ex = presetIdFromLocalId(id);
+  if (!ex) return null;
+  var cm = rtCardMap(r);
+  return (cm && cm[ex]) || null;
 }
 function roomAgentName(r, id) {
   var d = dynRoleOf(r, id);
@@ -10705,6 +10712,14 @@ async function rtEnsureRoles(r, agenda, brand, modId, idsIn, opts) {
   }
   if (!ids.length) return { applied: false };
   var sig = rtRolesSig(r, agenda, brand, modId);
+  /* 방 제목으로 이미 정해 둔 역할이 지금 AI 를 모두 덮으면 다시 짓지 않는다 —
+     초대 창에서 고른 AI 이름이 토론 시작 때 갑자기 바뀌지 않게(2026-11-24).
+     시트에 방 제목과 다른 안건을 넣었으면 이전 규칙대로 새로 짓는다. */
+  var coverTitle = agenda === String(rtTitleAgenda(r, r.name || "")).trim() && rtTitleRolesCover(r);
+  if (coverTitle) {
+    rtRememberTitleMod(r, ids, modId);
+    return { applied: false, reused: true, roles: r.dynamicRoles };
+  }
   if (rtRolesFresh(r, sig)) return { applied: false, reused: true, roles: r.dynamicRoles };
   var roles = await rtFetchRoles(r, agenda, brand, modId, ids, (opts && opts.ms) || 0);
   var source = roles ? "server" : "local";
@@ -10729,6 +10744,22 @@ async function rtEnsureRoles(r, agenda, brand, modId, idsIn, opts) {
    ========================================================= */
 var RT_TITLE_ROLES_MS = 2500;   /* 서버 응답을 기다리는 상한 — 3.5초 이상 끌지 않는다(실측 서버 2.6초 → 늦으면 키워드 폴백) */
 var rtTitleEnsuring = {};
+/* 이번 토론의 사회자 몫은 수렴 — 이름은 그대로 두고 사회자만 기억한다(초대 카드 이름과 달라지지 않게).
+   선택이 없으면 자동 추천을 쓴다. */
+function rtRememberTitleMod(r, ids, modId) {
+  if (!r || !r.dynamicRoles) return "";
+  var mod = String(modId || r.dynamicRolesMod || "");
+  if (!mod || !r.dynamicRoles[mod]) mod = String(rtAutoModerator(r, (ids && ids.length) ? ids : rtPresetIdsForRoles(r)) || "");
+  if (!mod || !r.dynamicRoles[mod]) return "";
+  r.dynamicRoles[mod].mission = "converge";
+  if (String(r.dynamicRolesMod || "") !== mod) {
+    r.dynamicRolesMod = mod;
+    r.dynamicRolesSig = rtRolesSig(r, rtTitleAgenda(r, r.name || ""), r.brand || "", mod);
+    save();
+    try { if (isRoomOwner(r)) dbSaveSettings(r); } catch (e) {}
+  }
+  return mod;
+}
 function rtEnsureTitleRoles(r) {
   if (!RT_ROLES_ON || !r) return Promise.resolve({ applied: false });
   if (roleModeOf(r) === "manual") return Promise.resolve({ applied: false });
@@ -10737,7 +10768,8 @@ function rtEnsureTitleRoles(r) {
   var modId = String(r.dynamicRolesMod || "");
   if (ids.indexOf(modId) < 0) modId = rtAutoModerator(r, ids) || ids[0];
   /* 이미 방 제목으로 만든 역할이 있으면 그대로 — 같은 방을 다시 열 때 서버를 부르지 않는다 */
-  if (rtRolesFresh(r, rtRolesSig(r, rtTitleAgenda(r, r.name), r.brand || "", modId))) {
+  if (rtTitleRolesCover(r) || rtRolesFresh(r, rtRolesSig(r, rtTitleAgenda(r, r.name), r.brand || "", modId))) {
+    try { rtRememberTitleMod(r, ids, modId); } catch (e0) {}   /* 토론 시트가 같은 AI를 사회자로 보여 주게 */
     return Promise.resolve({ applied: false, reused: true, roles: r.dynamicRoles });
   }
   if (rtTitleEnsuring[r.id]) return rtTitleEnsuring[r.id];   /* 초대 직후 인사 + 방 열기가 겹쳐도 한 번만 */
@@ -10766,6 +10798,152 @@ function rtScheduleTitleRoles(r, ms) {
     try { rtEnsureTitleRoles(r); } catch (e) {}
   }, ms || 900);
 }
+/* =========================================================
+   초대 선택 카드의 역할 — 방을 개설하고 초대 창을 여는 순간부터 (2026-11-24 지용 님)
+   ---------------------------------------------------------
+   제보: 방을 만들자마자 열린 초대 창의 카드가 기본 이름(마케터·기획자·리서처…)이었다.
+   원인: 역할은 방에 AI가 들어온 뒤에야 생기는데, 초대 창은 그 전(멤버 0명)에 열린다.
+   → 초대 창을 여는 순간 방 제목(r.name)으로 이 방 카탈로그의 프리셋 AI 역할을 즉시(0ms) 잡아
+     카드 이름·역할·한 줄 설명에 보여 주고, 서버(mode:"roles")가 오면 아직 아무도 넣기 전일 때만
+     카드만 더 정교한 이름으로 갱신한다(이미 넣은 AI의 이름은 절대 흔들지 않는다).
+   · 카드는 아직 방 멤버가 아니라 agent id 가 없다 → 프리셋 id(expert id)로 잡아 두고,
+     방에 들어오는 순간 그 역할을 r.dynamicRoles[새 agent id] 로 옮겨 칩·첫 인사·@이름까지 잇는다.
+   · 직접 만든 AI·내 AI·수동 역할(roleMode=manual)은 건드리지 않는다.
+   ========================================================= */
+var RT_CARD = {};        /* roomId → { key, map: { presetId: {name,role,desc,mission} } } */
+var RT_CARD_WAIT = {};   /* roomId → 서버 보정 진행 중 표시 */
+function rtCardKey(r) {
+  return [RT_ROLES_VER, rtTitleAgenda(r, r.name || ""), String((r && r.brand) || "").trim(),
+    String((r && categoryKeyOf(r)) || "")].join("|");
+}
+/* 방 제목·브랜드·주제가 그대로일 때만 유효한 카드 역할 */
+function rtCardMap(r) {
+  if (!r || !r.id) return null;
+  if (roleModeOf(r) === "manual") return null;
+  var c = RT_CARD[r.id];
+  if (!c || !c.map || c.key !== rtCardKey(r)) return null;
+  return c.map;
+}
+/* 이 방 카탈로그(초대 창에 뜨는 프리셋 AI)의 역할 — 방 제목 결로 고르고 이름이 겹치지 않게 한다 */
+function rtCardRolesBuild(r) {
+  var ids = expertCatalogFor(r).map(function (x) { return x.id; });
+  /* 이미 방에 있는 프리셋 AI 가 카탈로그 밖(다른 주제)에서 왔어도 이름이 비지 않게 뒤에 붙인다 */
+  rtPresetIdsForRoles(r).forEach(function (lid) {
+    var pid = presetIdFromLocalId(lid);
+    if (pid && ids.indexOf(pid) < 0) ids.push(pid);
+  });
+  var byTitle = rtLocalRoleSet(rtTitleAgenda(r, r.name || ""), r.brand || "", ids, r, "");
+  var map = {}, used = {};
+  byTitle.forEach(function (x) {
+    var name = String(x.name || "").trim().slice(0, 12) || String(x.role || "").slice(0, 12);
+    if (!name) return;
+    var key = name.toLowerCase(), n = 2, base = name;
+    while (used[key] && n < 6) { name = (base + " " + n).slice(0, 12); key = name.toLowerCase(); n++; }
+    used[key] = 1;
+    map[x.id] = {
+      name: name, role: String(x.role || name).trim().slice(0, 12),
+      desc: String(x.desc || "").trim().slice(0, 90), mission: String(x.mission || "")
+    };
+  });
+  return map;
+}
+/* 카드 한 장의 역할 — 이미 방에 들어온 AI는 그 AI의 실제 이름이 우선(카드와 방이 어긋나지 않게) */
+function rtCardRoleOf(r, ex) {
+  if (!r || !ex) return null;
+  var lid = findExpertAgent(ex.id);
+  var d = lid ? dynRoleOf(r, lid) : null;
+  if (d && String(d.name || "").trim()) return d;
+  var cm = rtCardMap(r);
+  return (cm && cm[ex.id]) || null;
+}
+/* AI 가 방에 들어오는 순간 — 카드에서 본 이름·역할 그대로 r.dynamicRoles 에 옮긴다.
+   (그래서 참여 칩·첫 입장 인사·@이름이 카드와 같은 이름으로 나온다) */
+function rtAssignCardRole(r, id) {
+  if (!r || !id) return false;
+  if (roleModeOf(r) === "manual") return false;
+  var a = state.agents[id];
+  if (!a || !isPresetExpertAgent(a)) return false;
+  var exId = String(a.expert || "");
+  if (!exId) return false;
+  var cm = rtCardMap(r);
+  if (!cm) { cm = rtCardRolesBuild(r); RT_CARD[r.id] = { key: rtCardKey(r), map: cm }; }
+  var x = cm && cm[exId];
+  if (!x) return false;
+  r.dynamicRoles = (r.dynamicRoles && typeof r.dynamicRoles === "object") ? r.dynamicRoles : {};
+  if (r.dynamicRoles[id] && String(r.dynamicRoles[id].name || "").trim()) return true;   /* 이미 이름이 있으면 그대로 */
+  r.dynamicRoles[id] = { name: x.name, role: x.role, desc: x.desc, mission: x.mission };
+  r.dynamicRolesSig = rtRolesSig(r, rtTitleAgenda(r, r.name || ""), r.brand || "", String(r.dynamicRolesMod || ""));
+  try { DYN_ROLE_KEEP[r.id] = { sig: r.dynamicRolesSig, map: r.dynamicRoles }; } catch (e) {}
+  save();
+  try { if (isRoomOwner(r)) dbSaveSettings(r); } catch (e2) {}
+  return true;
+}
+/* 초대 창을 여는 순간 — 0ms 로 방 제목 역할을 채우고, 서버 보정은 뒤에서 한 번만 */
+function rtPrepareCardRoles(r) {
+  if (!r || !r.id || roleModeOf(r) === "manual") return;
+  var key = rtCardKey(r);
+  var cur = RT_CARD[r.id];
+  if (cur && cur.map && cur.key === key) return;
+  var map = rtCardRolesBuild(r);
+  if (!Object.keys(map).length) return;
+  var mine = { key: key, map: map };
+  RT_CARD[r.id] = mine;
+  if (RT_CARD_WAIT[r.id]) return;
+  RT_CARD_WAIT[r.id] = 1;
+  var ids = expertCatalogFor(r).map(function (x) { return x.id; });
+  var agenda = rtTitleAgenda(r, r.name || ""), brand = r.brand || "";
+  var ask = function (tries) {
+    if (RT_CARD[r.id] !== mine) { delete RT_CARD_WAIT[r.id]; return; }
+    if (!r.remote) {   /* 방이 아직 서버에 안 올라갔으면(개설 직후) 잠깐 뒤 다시 */
+      if (tries < 4) { setTimeout(function () { ask(tries + 1); }, 350); return; }
+      delete RT_CARD_WAIT[r.id];
+      return;
+    }
+    rtFetchRoles(r, agenda, brand, "", ids, 6000).then(function (roles) {
+      delete RT_CARD_WAIT[r.id];
+      if (!roles || !roles.length || RT_CARD[r.id] !== mine) return;
+      /* 카드에서 AI를 이미 넣었다면 서버 이름으로 흔들지 않는다 — 넣은 AI는 카드에서 본 그 이름 그대로 */
+      var taken = ids.some(function (eid) {
+        var lid = findExpertAgent(eid);
+        return !!lid && r.members.indexOf(lid) > -1;
+      });
+      if (taken) return;
+      var sb = {}, used = {};
+      roles.forEach(function (x) {
+        var name = String(x.name || "").trim().slice(0, 12);
+        if (!name) return;
+        var k = name.toLowerCase(), n = 2, base = name;
+        while (used[k] && n < 6) { name = (base + " " + n).slice(0, 12); k = name.toLowerCase(); n++; }
+        used[k] = 1;
+        sb[x.id] = { name: name, role: String(x.role || name).trim().slice(0, 12),
+          desc: String(x.desc || "").trim().slice(0, 90), mission: String(x.mission || "") };
+      });
+      if (!Object.keys(sb).length) return;
+      mine.map = sb;
+      var im = $("inviteModal");
+      if (im && im.classList.contains("show") && activeRoom() && activeRoom().id === r.id) {
+        try { renderExpertPicker(); } catch (e3) {}
+      }
+    }, function () { delete RT_CARD_WAIT[r.id]; });
+  };
+  ask(0);
+}
+/* 방 제목으로 정한 역할이 지금 참여 AI 전원을 덮고 있는가 — 새 AI가 들어와도 이름을 다시 짓지 않는다. */
+function rtTitleRolesCover(r) {
+  if (!r) return false;
+  var map = dynRolesOf(r);
+  if (!map) return false;
+  var seg = String(r.dynamicRolesSig || "").split("|");
+  if (seg.length < 5 || seg[0] !== RT_ROLES_VER) return false;
+  if (seg[1] !== String(rtTitleAgenda(r, r.name || "")).trim()) return false;
+  if (seg[2] !== String(r.brand || "").trim()) return false;
+  var ids = rtPresetIdsForRoles(r);
+  for (var i = 0; i < ids.length; i++) {
+    var d = map[ids[i]];
+    if (!d || !String(d.name || "").trim()) return false;
+  }
+  return true;
+}
 /* 토론을 시작할 때 쓸 사회자 — 방을 열 때 방 제목으로 정해 둔 역할·사회자를 그대로 쓴다(재호출 없음) */
 function rtTitleModerator(r, parts) {
   if (!r) return "";
@@ -10788,6 +10966,7 @@ function rtClearDynamicRoles(r) {
   r.dynamicRolesSig = "";
   r.dynamicRolesMod = "";
   try { delete DYN_ROLE_KEEP[r.id]; } catch (e) {}
+  try { delete RT_CARD[r.id]; delete RT_CARD_WAIT[r.id]; } catch (e2) {}
 }
 /* 역할이 바뀌었다는 것을 화면에서도 한 줄로 보여 준다. */
 function rtRolesLine(roles) {
@@ -11621,6 +11800,9 @@ function openInviteHub(tab) {
   if (needStartFirst()) return;
   if (!activeRoom()) { toast("방을 먼저 만들어 주세요"); return; }
   invTarget = "room";
+  /* 초대 창을 여는 순간부터 방 제목에 맞는 역할로 카드를 보여 준다(2026-11-24).
+     로컬 계산은 즉시(0ms), 서버 보정은 뒤에서 한 번 — 먼저 뜨는 이름이 기본 이름이 아니게. */
+  try { rtPrepareCardRoles(activeRoom()); } catch (e) {}
   aiTab(tab || "kkiri");
   openModal("inviteModal");
 }
@@ -11650,6 +11832,8 @@ function invAttach(id, toPool) {
   if (r.members.indexOf(id) >= 0) return "room";      /* 이미 이 방에 있음 */
   if (roomCapacityBlocked(r)) return "full";            /* AI 8명 · 전체 12명 자리 확인 */
   r.members.push(id);
+  /* 들어오는 순간 초대 카드에서 본 이름·역할을 그 AI에 그대로 옮긴다 — 칩·첫 인사·@이름이 같은 이름(2026-11-24) */
+  try { rtAssignCardRole(r, id); } catch (e0) {}
   save();
   renderAll();
   /* 초대 창을 닫은 뒤에 AI가 더 들어온 경우 — 방 제목 역할에 새 AI도 맞춘다.
@@ -14330,9 +14514,17 @@ function renderExpertPicker() {
   catalog.forEach(function (ex) {
     var added = draft ? !!(findExpertAgent(ex.id) && inPool(findExpertAgent(ex.id))) : (!!inRoom[ex.id] || !!inRoom[ex.name]);
     var tail = !ownerNow ? (icoHtml("lock", "xs") + " 방장만") : (added ? (draft ? "✓ 목록에 있음 · 눌러서 빼기" : "✓ 이 방에 있음 · 눌러서 빼기") : (draft ? "+ 방에 넣기" : "+ 이 방에 추가"));
+    /* 방 제목에 맞춰 바뀐 역할이 있으면 카드 이름·역할·한 줄 설명을 그것으로 그린다(2026-11-24).
+       아바타 그림은 원래 프리셋 id·이름으로 찾는다 — 이름이 바뀌어도 캐릭터가 달라지지 않게. */
+    var dr = draft ? null : rtCardRoleOf(r, ex);
+    var nm = (dr && String(dr.name || "").trim()) || ex.name;
+    var rl = (dr && String(dr.role || "").trim()) || ex.role;
+    var ds = (dr && String(dr.desc || "").trim()) || "";
+    if (String(rl) === String(nm)) rl = "";   /* 이름과 같은 역할 라벨은 두 번 쓰지 않는다 */
     h += '<button type="button" class="expert-card' + (added ? " added" : "") + (ownerNow ? "" : " locked") + '" data-expert="' + esc(ex.id) + '"' + (added ? ' aria-disabled="true"' : "") + '>' +
       '<span class="e-top"><span class="e-ava' + (avIconName(ex.id, ex.name) ? " char" : "") + '" aria-hidden="true">' + expertIcoHtml(ex.id, ex.name, ex.avatar, "", "spark") + '</span>' +
-      '<span class="e-name"><span class="e-title"><b>' + esc(ex.name) + '</b>' + engTag(ex.config) + '</span><small>' + esc(ex.role) + '</small></span></span>' +
+      '<span class="e-name"><span class="e-title"><b>' + esc(nm) + '</b>' + engTag(ex.config) + '</span>' + (rl ? '<small>' + esc(rl) + '</small>' : '') + '</span></span>' +
+      (ds ? '<span class="e-desc">' + esc(ds) + '</span>' : '') +
       '<span class="e-foot"><span class="e-add">' + tail + '</span></span></button>';
   });
   grid.innerHTML = h;
