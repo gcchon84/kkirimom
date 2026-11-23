@@ -3457,7 +3457,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261124-0307-d1321a88";
+var APP_BUILD_VER = "20261124-0310-c81ba2c3";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -10339,6 +10339,8 @@ function rtRenderMods(r) {
   if (!row || !r) return;
   var cands = rtModCandidates(r);
   var cur = rtModSel || rtTitleModerator(r, rtRoomParts(r)) || rtAutoModerator(r, rtRoomParts(r));
+  /* 시트에 사회자로 보이는 AI를 그대로 기억한다 — 방에서 보던 이름·사회자와 어긋나지 않게(2026-11-24) */
+  if (!rtModSel && cur) { try { rtRememberTitleMod(r, rtRoomParts(r), cur); } catch (e) {} }
   var h = "";
   cands.forEach(function (c) {
     h += '<button type="button" class="pick" data-mod="' + esc(c.id) + '" aria-pressed="' +
