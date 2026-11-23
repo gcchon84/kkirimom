@@ -3452,7 +3452,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261123-2140-3db9d253";
+var APP_BUILD_VER = "20261123-2335-e12d7d1a";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -4014,7 +4014,7 @@ function agentName(id) {
   var a = state.agents[id];
   return a ? a.name : "AI";
 }
-function memberNames(r) { return r.members.map(agentName); }
+function memberNames(r) { return ((r && r.members) || []).map(function (id) { return roomAgentName(r, id); }); }
 
 /* =========================================================
    2. API 키 · 모델
@@ -4336,6 +4336,35 @@ function autoRoles(r) {
 }
 function roleModeOf(r) { return r && r.roleMode === "manual" ? "manual" : "auto"; }
 /* 실제로 적용되는 역할(수동이면 직접 적은 값, 빈칸은 자동값으로 대신) — 자주 불리므로 입력이 같으면 재사용 */
+/* =========================================================
+   안건 맞춤 역할 (2026-11-23 지용 님 — “역할 자체를 바꿔줘”)
+   ---------------------------------------------------------
+   토론 안건·브랜드에 맞춰 이 방 기본 프리셋 AI의 **화면 이름·역할 라벨·성격/시점**을 바꾼다.
+   · 방(r) 단위 매핑으로만 저장한다 — state.agents 를 고치면 다른 방의 역할까지 바뀐다.
+     r.dynamicRoles[agentId] = { name, role, desc, mission }
+   · 직접 만든 AI·내 AI·수동 역할(roleMode=manual)은 건드리지 않는다.
+   · 새로고침·재입장에도 유지되도록 방 settings.dynamicRoles 로 서버에 남긴다.
+   ========================================================= */
+function dynRoleOf(r, id) {
+  if (!r || !r.dynamicRoles || !id) return null;
+  var d = r.dynamicRoles[id];
+  if (!d || typeof d !== "object") return null;
+  return d;
+}
+function roomAgentName(r, id) {
+  var d = dynRoleOf(r, id);
+  var n = d && String(d.name || "").trim();
+  return n || agentName(id);
+}
+function roomDynamicNames(r) {
+  var out = [];
+  if (!r || !r.dynamicRoles) return out;
+  Object.keys(r.dynamicRoles).forEach(function (id) {
+    var d = r.dynamicRoles[id];
+    if (d && d.name) out.push(String(d.name));
+  });
+  return out;
+}
 var roleCache = { sig: null, map: null };
 function roomRoleMap(r) {
   if (!r) return {};
@@ -4344,21 +4373,38 @@ function roomRoleMap(r) {
       var a = state.agents[id] || {};
       return id + ":" + (a.role || "") + ":" + (a.desc || "");
     }).join(","),
-    JSON.stringify(r.roles || {})].join("|");
+    JSON.stringify(r.roles || {}),
+    JSON.stringify(r.dynamicRoles || {})].join("|");
   if (roleCache.sig === sig) return roleCache.map;
   var auto = autoRoles(r);
-  if (roleModeOf(r) !== "manual") { roleCache = { sig: sig, map: auto }; return auto; }
-  var map = {};
-  Object.keys(auto).forEach(function (id) {
-    var m = r.roles && r.roles[id];
-    var label = m && String(m.label || "").trim();
-    var focus = m && String(m.focus || "").trim();
-    map[id] = label || focus
-      ? { key: auto[id].key, label: (label || auto[id].label).slice(0, 24), focus: (focus || auto[id].focus).slice(0, 120) }
-      : auto[id];
+  var base = auto;
+  if (roleModeOf(r) === "manual") {
+    var map = {};
+    Object.keys(auto).forEach(function (id) {
+      var m = r.roles && r.roles[id];
+      var label = m && String(m.label || "").trim();
+      var focus = m && String(m.focus || "").trim();
+      map[id] = label || focus
+        ? { key: auto[id].key, label: (label || auto[id].label).slice(0, 24), focus: (focus || auto[id].focus).slice(0, 120) }
+        : auto[id];
+    });
+    base = map;
+  }
+  /* 안건 맞춤 역할이 있으면 그 이름·설명을 이 방의 역할로 쓴다(직접 정한 AI는 위에서 own 으로 남는다). */
+  var out = {};
+  Object.keys(base).forEach(function (id) {
+    var d = dynRoleOf(r, id);
+    var ro = base[id];
+    if (!d || !ro || ro.custom) { out[id] = ro; return; }
+    out[id] = {
+      key: ro.key || "advice",
+      label: String(d.role || d.name || ro.label).slice(0, 24),
+      focus: String(d.desc || ro.focus || "").slice(0, 120),
+      dyn: 1
+    };
   });
-  roleCache = { sig: sig, map: map };
-  return map;
+  roleCache = { sig: sig, map: out };
+  return out;
 }
 function roleOf(r, id) { var m = roomRoleMap(r); return m[id] || null; }
 function roleChip(r, id) {
@@ -4374,8 +4420,10 @@ function roleDirective(r, agent) {
   if (!isPresetExpertAgent(agent)) return "";
   var ro = roleOf(r, agent.id);
   if (!ro) return "";
+  var d = dynRoleOf(r, agent.id);
   return "\n이 방에서 맡은 역할: " + ro.label + " — " + ro.focus + ". " + roleContext(r) +
-    " 맥락에서 이 역할로만 발언하고, 다른 역할의 일을 대신하지 않는다.";
+    " 맥락에서 이 역할로만 발언하고, 다른 역할의 일을 대신하지 않는다." +
+    (d && d.name ? " 이 방에서 네 이름은 ‘" + d.name + "’이다." : "");
 }
 
 /* 2026-11-22 지용 님 — 자기 역할 밖의 말을 하는 문제(마음 공감맘이 소아과 진단, 육아템 가성비가 위로).
@@ -4395,7 +4443,10 @@ function roleBoundLine(roleText) {
 function agentRoleText(r, agent) {
   var parts = [];
   try { var ro = (r && agent) ? roleOf(r, agent.id) : null; if (ro && ro.label) parts.push(ro.label); } catch (e) {}
-  if (agent && agent.role) parts.push(String(agent.role));
+  var d = (r && agent) ? dynRoleOf(r, agent.id) : null;
+  /* 안건 맞춤 역할이 있으면 예전 직함(agent.role)을 섮지 않는다 — 옛 역할의 경계 문구가 붙는 것을 막는다. */
+  if (d) parts.push(String(d.role || ""), String(d.desc || ""));
+  else if (agent && agent.role) parts.push(String(agent.role));
   return parts.join(" ").trim();
 }
 function roleBoundBlock(r, agent) {
@@ -4403,7 +4454,7 @@ function roleBoundBlock(r, agent) {
   var bound = roleBoundLine(txt) || roleBoundLine(agent && agent.prompt);
   /* 2026-11-23 — 이번 회의 미션이 있으면 역할 경계보다 미션이 우선한다(비판가가 발산 미션을 받을 때 깎기만 하던 문제). */
   var mk = rtStepMissionNow();
-  return "[역할 경계 — " + (mk ? "이번 미션 아래에서" : "최우선") + "] 너는 '" + ((agent && agent.name) || "AI") + "'이고 맡은 역할은 '" + (txt || "전문가") +
+  return "[역할 경계 — " + (mk ? "이번 미션 아래에서" : "최우선") + "] 너는 '" + ((agent && roomAgentName(r, agent.id)) || "AI") + "'이고 맡은 역할은 '" + (txt || "전문가") +
     "'다. 말투는 아래 말투 규칙을 따르되, 말의 내용은 이 역할 밖으로 절대 나가지 않는다." +
     (bound && !mk ? " " + bound : "") +
     (mk ? " 이번 토론에서는 이 역할 경계보다 위 [이번 회의 미션]이 우선한다. 미션이 발산·실행안이면 비판 성격의 지적을 접고 제안을 5요소로 완성해 낸다." : "") +
@@ -4919,7 +4970,7 @@ function addToPool(id, quiet) {
   if (!state.agents[id]) return false;
   if (state.pool.indexOf(id) < 0) { state.pool.push(id); save(); }
   renderAll();
-  if (!quiet) toast(agentName(id) + " · 다음 방에서도 부를 수 있게 저장했어요");
+  if (!quiet) toast(roomAgentName(activeRoom(), id) + " · 다음 방에서도 부를 수 있게 저장했어요");
   return true;
 }
 /* 같은 끼리맘 AI가 이미 내 AI로 등록돼 있으면 그 카드를 재사용한다. */
@@ -5203,6 +5254,12 @@ function updateMeters() {
    ========================================================= */
 function fmtText(text) {
   var out = esc(stripExtendMark(stripEarlyMark(text)));   /* [연장]은 화면에 남기지 않는다(2026-11-23) */
+  /* 안건 맞춤 이름이 먼저 — 긴 이름부터 바꿔야 짧은 이름이 안쪽을 먼저 삼키지 않는다. */
+  roomDynamicNames(activeRoom()).sort(function (a, b) { return b.length - a.length; }).forEach(function (n) {
+    if (!n) return;
+    var re = new RegExp("@" + escapeRe(esc(n)), "g");
+    out = out.replace(re, '<span class="mention">@' + esc(n) + "</span>");
+  });
   allAgents().sort(function (a, b) { return b.name.length - a.name.length; }).forEach(function (a) {
     if (!a.name) return;
     var re = new RegExp("@" + escapeRe(esc(a.name)), "g");
@@ -5281,15 +5338,17 @@ function msgHtml(m) {
   }
   var a = state.agents[m.who];
   if (!a) return "";
+  var msgRoom = activeRoom();
+  var msgName = roomAgentName(msgRoom, m.who);
   var meta = "<time>" + esc(timeLabel(m.at)) + "</time>" +
     (m.credits && !FREE_LAUNCH_MODE ? "<span>· " + creditsLabel(m.credits) + " 크레딧</span>" : "") +
     (m.dup ? '<span class="src demo">중복 방지</span>' : "");
-  var ro = roleOf(activeRoom(), m.who);
+  var ro = roleOf(msgRoom, m.who);
   /* 2026-11-22 — 사회자 말풍선에만 '사회자' 표시 */
-  var modNow = (activeRoom() && activeRoom().moderator) || run.moderator || "";
-  var isModMsg = !!(modNow && (sameName(a.name, modNow) || sameName(a.id, modNow)));
+  var modNow = (msgRoom && msgRoom.moderator) || run.moderator || "";
+  var isModMsg = !!(modNow && (sameName(msgName, modNow) || sameName(a.name, modNow) || sameName(a.id, modNow)));
   return '<div class="msg ' + (a.type === "expert" ? "kkiriai" : "myai") + '">' + avatarHtml(m.who, null, true) + '<div class="body">' +
-    '<div class="who">' + esc(a.name) + engineBadge(m) + (isModMsg ? '<span class="mod-tag">' + icoHtml("crown", "xs") + '사회자</span>' : "") + "<em>" + esc(ro ? ro.label : a.role) + "</em>" + srcBadge(m) + "</div>" +
+    '<div class="who">' + esc(msgName) + engineBadge(m) + (isModMsg ? '<span class="mod-tag">' + icoHtml("crown", "xs") + '사회자</span>' : "") + "<em>" + esc(ro ? ro.label : a.role) + "</em>" + srcBadge(m) + "</div>" +
     '<div class="bubble">' + fmtText(m.text) + "</div>" +
     '<div class="meta">' + meta + "</div></div></div>";
 }
@@ -5379,7 +5438,7 @@ function typingHtml(id) {
   /* tint=true — 올라간 말풍선(msgHtml)과 똑같은 색. 예전엔 여기만 tint 가 없어
      작성 중에는 AI 고유색, 글이 올라가면 보라(끼리맘 AI)·민트(내 AI)로 색이 바뀌었다(2026-11-23 지용 님 제보). */
   return '<div class="typing">' + avatarHtml(id, null, true) +
-    '<div class="bubble">' + esc(a.name) + ' 답장 작성 중<span class="dots"><i></i><i></i><i></i></span>' +
+    '<div class="bubble">' + esc(roomAgentName(activeRoom(), id)) + ' 답장 작성 중<span class="dots"><i></i><i></i><i></i></span>' +
     cutBtnHtml("ai", id) + '</div></div>';
 }
 /* 내 AI 차례 — 호명을 올리고 답을 기다리는 동안 보여 준다 */
@@ -5478,7 +5537,7 @@ function useSuggestion(text) {
   var ids = r.members.filter(function (id) { return !!state.agents[id]; });
   var who = "";
   if (ids.length >= 2) who = "@AI전원 ";
-  else if (ids.length === 1) who = "@" + agentName(ids[0]) + " ";
+  else if (ids.length === 1) who = "@" + roomAgentName(r, ids[0]) + " ";
   var cur = String(el.value || "").trim();
   el.value = cur ? cur + " " + text : who + text;
   el.focus();
@@ -5641,11 +5700,11 @@ function renderQuick() {
     var a = state.agents[id];
     /* 이 방에 들어와 있는 AI도 같은 규칙 — 끼리맘 AI는 보라·스파크, 내 AI는 민트·로봇 */
     if (a.type === "expert") {
-      h += '<button type="button" class="q-chip" data-mention="' + esc(a.name) + '" title="끼리맘 AI · ' + (FREE_LAUNCH_MODE ? "무료" : "답변 1회당 " + configCost(a.model) + "크레딧") + ' · 눌러서 @이름 부르기">' +
-        "@" + esc(a.name) + "</button>";
+      h += '<button type="button" class="q-chip" data-mention="' + esc(roomAgentName(r, a.id)) + '" title="끼리맘 AI · ' + (FREE_LAUNCH_MODE ? "무료" : "답변 1회당 " + configCost(a.model) + "크레딧") + ' · 눌러서 @이름 부르기">' +
+        "@" + esc(roomAgentName(r, a.id)) + "</button>";
     } else {
-      h += '<button type="button" class="q-chip" data-mention="' + esc(a.name) + '" title="내 AI · 눌러서 @이름 부르기">' +
-        "@" + esc(a.name) + "</button>";
+      h += '<button type="button" class="q-chip" data-mention="' + esc(roomAgentName(r, a.id)) + '" title="내 AI · 눌러서 @이름 부르기">' +
+        "@" + esc(roomAgentName(r, a.id)) + "</button>";
     }
   });
   people.forEach(function (n) {
@@ -5872,8 +5931,8 @@ function renderPeople() {
     var kkiri = a.type === "expert";
     /* 2026-11-22 — 이 방의 사회자는 칩에 왕관 + '사회자' 표시 */
     var isModChip = !!((r.moderator && sameName(a.id, r.moderator)) || (run.moderator && sameName(a.id, run.moderator)));
-    h += '<button type="button" class="pb-chip ' + (kkiri ? "kkiriai" : "myai") + (isModChip ? " mod" : "") + '" data-ai-id="' + esc(a.id) + '" title="' + esc(a.name) + (isModChip ? " · 사회자" : "") + (kkiri ? (FREE_LAUNCH_MODE ? " · 끼리맘 AI · 무료" : " · 끼리맘 AI · 답변 1회당 " + configCost(a.model) + "크레딧") : " · 내 AI · 대화 무료") + (isRoomOwner(r) ? ' · 눌러서 이 방에서 빼기' : '') + '" aria-label="' + esc(a.name) + (isModChip ? " 사회자" : "") + '">' +
-      '<i class="pb-dot" aria-hidden="true" style="--c:' + (kkiri ? "#F8A6B4" : "#10B981") + '"></i>' + (isModChip ? icoHtml("crown", "xs") : "") + esc(a.name) + "</button>";
+    h += '<button type="button" class="pb-chip ' + (kkiri ? "kkiriai" : "myai") + (isModChip ? " mod" : "") + '" data-ai-id="' + esc(a.id) + '" title="' + esc(roomAgentName(r, a.id)) + (isModChip ? " · 사회자" : "") + (kkiri ? (FREE_LAUNCH_MODE ? " · 끼리맘 AI · 무료" : " · 끼리맘 AI · 답변 1회당 " + configCost(a.model) + "크레딧") : " · 내 AI · 대화 무료") + (isRoomOwner(r) ? ' · 눌러서 이 방에서 빼기' : '') + '" aria-label="' + esc(roomAgentName(r, a.id)) + (isModChip ? " 사회자" : "") + '">' +
+      '<i class="pb-dot" aria-hidden="true" style="--c:' + (kkiri ? "#F8A6B4" : "#10B981") + '"></i>' + (isModChip ? icoHtml("crown", "xs") : "") + esc(roomAgentName(r, a.id)) + "</button>";
   });
   host.innerHTML = h;
   bar.hidden = !h;
@@ -6084,7 +6143,7 @@ async function askRemoveAi(id) {
   var r = activeRoom();
   if (!r) return;
   if (!canSpendCredits(r)) { ownerOnlyBlocked("끼리맘 AI 빼기"); return; }
-  var name = agentName(id);
+  var name = roomAgentName(r, id);
   var ok = await askConfirm({
     title: "‘" + name + "’을(를) 이 방에서 뺄까요?",
     body: "이 방의 대화·역할에서 빠집니다. 다음에 상단 ‘이 방 초대’로 다시 부를 수 있어요.",
@@ -6317,8 +6376,9 @@ var ANGLES = [
 ];
 
 function fillTpl(tpl, room, agent) {
-  var others = room.members.filter(function (id) { return id !== agent.id; }).map(agentName);
+  var others = room.members.filter(function (id) { return id !== agent.id; }).map(function (id) { return roomAgentName(room, id); });
   var names = memberNames(room).join(" · ");
+  var roForGreet = roleOf(room, agent.id);
   return String(tpl)
     .replace(/\{agenda\}/g, room.agenda || room.name)
     .replace(/\{members\}/g, names)
@@ -6326,8 +6386,8 @@ function fillTpl(tpl, room, agent) {
     .replace(/\{turns\}/g, String(room.rounds || Math.max(1, Math.round((room.maxTurns || 30) / Math.max(1, room.members.length)))))
     .replace(/\{rounds\}/g, String(room.rounds || RT_DEFAULT_ROUNDS))
     .replace(/\{budget\}/g, creditsLabel(room.budget) + " 크레딧")
-    .replace(/\{role\}/g, agent.role || "")
-    .replace(/\{name\}/g, agent.name)
+    .replace(/\{role\}/g, (roForGreet && roForGreet.label) || agent.role || "")
+    .replace(/\{name\}/g, roomAgentName(room, agent.id))
     .replace(/\{other2\}/g, others[1] || others[0] || "다른 AI")
     .replace(/\{other\}/g, others[0] || "다른 AI");
 }
@@ -6522,14 +6582,26 @@ function rtStepKey(s) {
 }
 function rtMissionScore(r, step, key) {
   var a = step.kind === "agent" ? state.agents[step.id] : null;
+  var dyn = step.kind === "agent" ? dynRoleOf(r, step.id) : null;
   var txt = a ? [a.role, a.desc, a.name, a.prompt].join(" ") : "내 AI 참가자";
+  if (dyn) txt += " " + [dyn.name, dyn.role, dyn.desc].join(" ");   /* 안건 맞춤 역할 글자도 궁합에 반영 */
   var sc = step.kind === "relay" ? 1 : 0;
-  if (key === "diverge") sc += /기획|카피|아이디어|창의|마케팅|캐페인|제안|프로모|이벤트|리서처/.test(txt) ? 4 : 0;
-  if (key === "target") sc += /고객|사용자|공감|타깃|엄마|부모/.test(txt) ? 4 : 0;
-  if (key === "risk") sc += /비판|검증|리스크|허점|반대/.test(txt) ? 4 : 0;
-  if (key === "build") sc += /실행|운영|전략|실무|일정|데이터|근거/.test(txt) ? 3 : 0;
+  if (key === "diverge") sc += /기획|카피|아이디어|창의|마케팅|캐페인|캠페인|제안|프로모|이벤트|리서처|실행|제품|루틴|동선|대화|채용|실무/.test(txt) ? 4 : 0;
+  if (key === "target") sc += /고객|사용자|공감|타깃|엄마|부모|기질|입장|현지|후기|문화/.test(txt) ? 4 : 0;
+  if (key === "risk") sc += /비판|검증|리스크|허점|반대|안전|위험|주의|비용/.test(txt) ? 4 : 0;
+  if (key === "build") sc += /실행|운영|전략|실무|일정|데이터|근거|예산|보완|분담/.test(txt) ? 3 : 0;
   return sc;
 }
+/* 이번 차례의 미션 힌트 — 안건 맞춤 역할을 지을 때 정한 미션(diverge·target·build·risk). */
+function rtMissionHint(r, step) {
+  try {
+    var d = step && step.kind === "agent" ? dynRoleOf(r, step.id) : null;
+    var m = d && String(d.mission || "");
+    return RT_MISSION[m] ? m : "";
+  } catch (e) { return ""; }
+}
+/* 미션 배정 우선순위: ①안건 맞춤 역할이 정한 미션 → ②역할 궁합 점수.
+   반드시 지키는 것: 발산이 전체 발언자의 절반 이상, 사회자는 수렴(중립), 타깃 1명 이상, 리스크는 최대 1명. */
 function rtMissionPlan(r, parts, people, mod) {
   var slots = [];
   (parts || []).forEach(function (id) { if (id) slots.push({ kind: "agent", id: id }); });
@@ -6541,23 +6613,51 @@ function rtMissionPlan(r, parts, people, mod) {
   }
   var others = slots.filter(function (s) { return !isModSlot(s); });
   var mslot = slots.filter(isModSlot)[0];
-  if (!others.length) { if (mslot) map[rtStepKey(mslot)] = "converge"; return map; }
+  if (mslot) map[rtStepKey(mslot)] = "converge";
+  if (!others.length) return map;
   var need = Math.max(1, Math.ceil(slots.length / 2));     /* 발산은 전체 발언자의 절반 이상 */
-  var ranked = others.slice().sort(function (a, b) { return rtMissionScore(r, b, "diverge") - rtMissionScore(r, a, "diverge"); });
-  var take = Math.min(need, others.length);
-  for (var i = 0; i < take; i++) map[rtStepKey(ranked[i])] = "diverge";
-  var rest = ranked.slice(take);
-  if (rest.length) {
-    rest.sort(function (a, b) { return rtMissionScore(r, b, "target") - rtMissionScore(r, a, "target"); });
-    map[rtStepKey(rest[0])] = "target";
-    rest = rest.slice(1);
+  var diverge = 0;
+  /* 1) 안건 맞춤 역할이 정한 미션을 먼저 따른다 */
+  others.forEach(function (s) {
+    var h = rtMissionHint(r, s);
+    if (h === "converge") h = "build";
+    map[rtStepKey(s)] = h || "";
+    if (h === "diverge") diverge++;
+  });
+  /* 2) 발산이 모자라면 — 미정 → 보완 → 리스크 → 타깃 순으로 올린다(타깃은 마지막까지 살린다) */
+  var order = ["", "build", "risk", "target"];
+  order.forEach(function (want) {
+    others.forEach(function (s) {
+      if (diverge >= need) return;
+      if (map[rtStepKey(s)] !== want) return;
+      map[rtStepKey(s)] = "diverge";
+      diverge++;
+    });
+  });
+  /* 3) 나머지 미정은 궁합 점수 순으로 보완 */
+  var rest = others.filter(function (s) { return map[rtStepKey(s)] === ""; });
+  rest.sort(function (a, b) { return rtMissionScore(r, b, "build") - rtMissionScore(r, a, "build"); });
+  rest.forEach(function (s) {
+    if (diverge < need) { map[rtStepKey(s)] = "diverge"; diverge++; return; }
+    map[rtStepKey(s)] = "build";
+  });
+  /* 4) 타깃 1명 이상 — 발산이 넘치면 발산 하나를 타깃으로 돌리고, 아니면 보완 자리에서 고른다. 리스크는 최대 1명. */
+  var hasTarget = others.some(function (s) { return map[rtStepKey(s)] === "target"; });
+  if (others.length >= 3 && !hasTarget) {
+    if (diverge > need) {
+      var dv = others.filter(function (s) { return map[rtStepKey(s)] === "diverge"; })
+        .sort(function (a, b) { return rtMissionScore(r, b, "target") - rtMissionScore(r, a, "target"); });
+      if (dv.length) { map[rtStepKey(dv[0])] = "target"; diverge--; }
+    } else {
+      var nonDiv = others.filter(function (s) { return map[rtStepKey(s)] !== "diverge"; });
+      if (nonDiv.length) {
+        nonDiv.sort(function (a, b) { return rtMissionScore(r, b, "target") - rtMissionScore(r, a, "target"); });
+        map[rtStepKey(nonDiv[0])] = "target";
+      }
+    }
   }
-  if (rest.length >= 2) {
-    rest.sort(function (a, b) { return rtMissionScore(r, b, "risk") - rtMissionScore(r, a, "risk"); });
-    map[rtStepKey(rest[0])] = "risk";
-    rest = rest.slice(1);
-  }
-  rest.forEach(function (s) { map[rtStepKey(s)] = "build"; });
+  var risks = others.filter(function (s) { return map[rtStepKey(s)] === "risk"; });
+  if (risks.length > 1) risks.slice(1).forEach(function (s) { map[rtStepKey(s)] = "build"; });
   if (mslot) map[rtStepKey(mslot)] = "converge";
   return map;
 }
@@ -7168,7 +7268,7 @@ async function speak(agent, phase, ep) {
   /* 최종 안전장치 — 크레딧이 나가는 끼리맘 AI 턴은 방장만. (멘션·토론 경로를 모두 거쳐 여기까지 온다) */
   if (aiUsesCredits(agent.id) && !canSpendCredits(activeRoom())) {
     typingStop(agent.id);
-    addSystem(agent.name + " · 끼리맘 AI는 방장만 부를 수 있어요 · 모든 대화는 무료예요", "warn");
+    addSystem(roomAgentName(activeRoom(), agent.id) + " · 끼리맘 AI는 방장만 부를 수 있어요 · 모든 대화는 무료예요", "warn");
     updateMeters();
     return;
   }
@@ -7227,11 +7327,11 @@ async function speak(agent, phase, ep) {
       };
     } else if (Number(e && e.status) === 0 && route !== "kkiri-byok") {
       /* 끼리맘 AI 쪽 연결이 흔들린 경우 — 설정 창으로 보내지 않고 한 줄로만 조용히 알린다 */
-      guide = { text: agent.name + " · 잠시 연결이 흔들렸어요 · 다시 불러 주세요", acts: null };
+      guide = { text: roomAgentName(activeRoom(), agent.id) + " · 잠시 연결이 흔들렸어요 · 다시 불러 주세요", acts: null };
     } else {
       note = (e && (e.cloud || e.webhook)) ? e.msg : friendlyError(e);
       guide = {
-        text: agent.name + " 응답을 받지 못했어요 · " + note,
+        text: roomAgentName(activeRoom(), agent.id) + " 응답을 받지 못했어요 · " + note,
         acts: [{ label: "설정 · API 키", act: "settings" }]
       };
     }
@@ -7266,7 +7366,7 @@ async function speak(agent, phase, ep) {
                                       : "앞선 의견에 더 보탤 내용이 없어 이번 차례는 여기서 접겠습니다.";
     }
     /* 마지막 마무리에서 사회자가 ‘아직 짚을 쟁점이 남았다’고 판단하면 [+1라운드 이어하기] 제안을 예약한다 */
-    if (!early) rtExtendNote(out, agent.name, isModAgent(agent), phase);
+    if (!early) rtExtendNote(out, roomAgentName(activeRoom(), agent.id), isModAgent(agent), phase);
     /* 2026-11-22 지용 님 — \"말만 바꾼 중복\"을 전체 최근 발언 기준으로 잡는다.
        걸리면 같은 경로로 한 번만 '다른 각도'를 요구해 다시 부르고, 그래도 겹치면 이번 턴은 건너뛴다. */
     if (run.mode === "roundtable" && route !== "kkiri-cloud" && phase !== "converge" && turnDuplicate(out.text)) {
@@ -7294,19 +7394,19 @@ async function speak(agent, phase, ep) {
         save();
         updateMeters();
         renderSidebar();
-        addSystem(agent.name + " 답변이 앞선 발언과 겹쳐 이번 턴을 건너뛰었어요(중복 방지).", "warn");
+        addSystem(roomAgentName(activeRoom(), agent.id) + " 답변이 앞선 발언과 겹쳐 이번 턴을 건너뛰었어요(중복 방지).", "warn");
         return;
       }
     }
     /* v3: 서버가 저장한 발언(id·noSend·credits)까지 그대로 넘겨 중복 저장/중복 표시를 막는다 */
     out.src = out.src || "demo";
     addAgentMessage(agent, out, phase);
-    if (early) finishEarly(agent.name);
+    if (early) finishEarly(roomAgentName(activeRoom(), agent.id));
     return;
   }
   if (guide) { if (guide.limit) openGuestLimit("ai"); addSystem(guide.text, "warn", guide.acts); updateMeters(); return; }
   /* 여기까지 왔다는 건 끼리맘 AI·나의 AI 어느 쪽도 답을 주지 못했다는 뜻 — 다른 엔진으로 대신 답하지 않는다. */
-  addSystem(agent.name + " 응답을 받지 못했어요. 잠시 뒤 다시 불러 주세요.", "warn");
+  addSystem(roomAgentName(activeRoom(), agent.id) + " 응답을 받지 못했어요. 잠시 뒤 다시 불러 주세요.", "warn");
 }
 
 function startRoundtable(opts) {
@@ -7959,7 +8059,9 @@ function parseMentions(text) {
   var online = onlineNameMap();
   var aiIds = r.members.filter(function (id) {
     var a = state.agents[id];
-    return !!a && !online[String(a.name).toLowerCase()];
+    if (!a) return false;
+    var dn = roomAgentName(r, id);
+    return !online[String(a.name).toLowerCase()] && !online[String(dn).toLowerCase()];
   });
   if (/@(AI전원|전원|모두|all)/i.test(text)) {
     /* @AI전원은 내장 AI들만 호출한다(내 키 AI 포함). 접속자·외부 AI는 타임라인에 올라간 @AI전원 글을 보고
@@ -7971,7 +8073,9 @@ function parseMentions(text) {
   var ids = [];
   aiIds.forEach(function (id) {
     var a = state.agents[id];
-    if (new RegExp("@" + escapeRe(a.name), "i").test(text)) ids.push(id);
+    var dn = roomAgentName(r, id);
+    /* 안건 맞춤 이름과 원래 이름 둘 다로 부를 수 있다(이름이 바뀌어도 예전 이름으로 부르면 알아들음) */
+    if (new RegExp("@" + escapeRe(dn), "i").test(text) || new RegExp("@" + escapeRe(a.name), "i").test(text)) ids.push(id);
   });
   return { ids: ids, all: false };
 }
@@ -8211,17 +8315,29 @@ function brandLeadBlock(r) {
   return head + "[팩트 브리핑 — 토론 시작 시 1회 확인된 사실]\n" + lines.join("\n") +
     "\n· 이 브리핑과 브랜드 사실에 있는 수치·사례만 인용하고, 없는 것은 ‘[확인 필요]’로 표시한다.\n";
 }
+/* 안건 맞춤 역할 블록 — 이 방의 AI 이름·역할·시점을 안건에 맞춰 바꿔 둔 것을 프롬프트 맨 위에 못박는다.
+   2026-11-23 지용 님 — “역할 자체를 바꿔줘”. 예전 캐릭터 설명보다 이 역할이 우선한다. */
+function dynRoleBlock(r, agent) {
+  var d = (r && agent) ? dynRoleOf(r, agent.id) : null;
+  if (!d || !String(d.name || "").trim()) return "";
+  return "[이 방의 역할 — 안건 맞춤]\n· 이 방에서 너는 ‘" + d.name + "’(" + (d.role || d.name) + ")다. " + (d.desc || "") +
+    "\n· 이 이름·역할·시점은 이 방의 안건에 맞춰 정해졌다. 예전 캐릭터 이름·직함으로 돌아가지 말고 이 역할로만 말한다.\n";
+}
 /* 이번 차례의 회의 미션 — 캐릭터는 유지하고 하는 일만 바꾼다. */
 function missionLeadBlock() {
   var mk = rtStepMissionNow();
   if (!mk) return "";
   return "[이번 회의 미션 — 역할 경계보다 우선]\n· 이번 미션: ‘" + (RT_MISSION[mk] ? RT_MISSION[mk].label : mk) + "’ — " + rtMissionText(mk) + "\n" +
-    "· 이름·캐릭터·말투는 그대로 유지하고, 이번 토론에서 하는 일만 이 미션을 따른다. 역할 성격과 부딪히면 미션을 따른다(예: 비판가 성격이어도 미션이 발산이면 실행안을 완성해 낸다).\n";
+    "· 이 방에서 정한 이름·역할·말투는 그대로 두고, 이번 토론에서 하는 일만 이 미션을 따른다. 역할 성격과 부딪히면 미션을 따른다(예: 검증 성격이어도 미션이 발산이면 실행안을 완성해 낸다).\n";
 }
 function systemFor(agent, phase) {
   var r = activeRoom();
   var team = memberNames(r).join(", ");
-  var base = agent.prompt || (agent.type === "webhook" ? "너는 이 방의 AI 멤버다." : "너는 이 방의 AI 멤버다.");
+  var dyn = r ? dynRoleOf(r, agent.id) : null;
+  /* 안건 맞춤 역할이 있으면 예전 프리셋 성격 대신 그 역할의 시점으로 답하게 한다 */
+  var base = dyn && dyn.name
+    ? ("너는 이 방에서 ‘" + dyn.name + "’ 역할을 맡았다. " + (dyn.desc || "") + " 이 역할의 시점으로만 말한다.")
+    : (agent.prompt || (agent.type === "webhook" ? "너는 이 방의 AI 멤버다." : "너는 이 방의 AI 멤버다."));
   /* 모바일에서 한눈에 들어오게 · 2026-11-22 지용 님 — 모든 단계를 1~2문장(60~80자 안팎)으로 압축,
      상세 설명을 요청한 직후 턴만 3~4문장까지 허용한다 */
   var lengthRule = brevityForTurn(agent, phase);
@@ -8253,7 +8369,7 @@ function systemFor(agent, phase) {
         : "") +
       (phase === "redirect" ? " 안건 확인·질문·인사 없이 새 방향의 첫 제안(이름·수치)부터 바로 말하라." : "");
   }
-  return brandLeadBlock(r) + missionLeadBlock() + roleBoundBlock(r, agent) + toneRuleFor(r) + "\n" + base + roleDirective(r, agent) + reBlock + modBlock + "\n방: " + r.name + " / 안건: " + (r.agenda || "없음") +
+  return brandLeadBlock(r) + dynRoleBlock(r, agent) + missionLeadBlock() + roleBoundBlock(r, agent) + toneRuleFor(r) + "\n" + base + roleDirective(r, agent) + reBlock + modBlock + "\n방: " + r.name + " / 안건: " + (r.agenda || "없음") +
     "\n함께 있는 AI: " + team +
     "\n규칙: " + toneClause + " " + lengthRule + " 마크다운 제목·이모지 금지. 확인하지 않은 수치·일정·재고를 아는 것처럼 말하지 말고 ‘확인 필요’로 표시한다. 인사·추임새는 넣지 않는다. 앞사람 말은 내용으로 이어받고, 이름 호명은 3~4턴 중 1번 이하로 아껴 쓴다. 자기 이름을 매번 붙이지 않는다." + joinRule +
     " 네 역할 경계(공감 담당은 감정·위로, 가성비 담당은 제품·비용, 비판 담당은 리스크)를 지키고 다른 역할의 답을 대신하지 않는다. 참여자를 부를 때는 채팅방에 보이는 닉네임으로만 부르고, 실명이나 다른 별명으로 부르지 않는다." +
@@ -8326,7 +8442,7 @@ function lastSpeakerName(r) {
   if (!r) return "";
   var msgs = r.messages.filter(function (m) { return m.who !== "system" && m.who !== "card"; });
   var last = msgs[msgs.length - 1];
-  return last ? String(agentName(last.who) || "") : "";
+  return last ? String(roomAgentName(r, last.who) || "") : "";
 }
 function isModAgent(agent) {
   return !!(agent && run.moderator && sameName(agent.id, run.moderator));
@@ -8385,11 +8501,11 @@ function turnPrompt(agent, phase) {
   var r = activeRoom();
   var msgs = r.messages.filter(function (m) { return m.who !== "system" && m.who !== "card"; }).slice(-14);
   var lines = msgs.map(function (m) {
-    return agentName(m.who) + ": " + String(m.text || "").replace(/\s+/g, " ").slice(0, 300);
+    return roomAgentName(r, m.who) + ": " + String(m.text || "").replace(/\s+/g, " ").slice(0, 300);
   });
   var ro = roleOf(r, agent.id);
   return "[지금까지의 발언]\n" + (lines.length ? lines.join("\n") : "(없음)") +
-    "\n\n[차례] 지금은 " + agent.name + "(" + (ro ? ro.label : (agent.role || "멤버")) + ") 차례다. " + phaseInstruction(phase, r, agent);
+    "\n\n[차례] 지금은 " + roomAgentName(r, agent.id) + "(" + (ro ? ro.label : (agent.role || "멤버")) + ") 차례다. " + phaseInstruction(phase, r, agent);
 }
 
 async function liveTurn(agent, provider, phase) {
@@ -8411,7 +8527,7 @@ function hookError(st) {
 async function webhookTurn(agent, phase) {
   var r = activeRoom();
   var ctx = r.messages.filter(function (m) { return m.who !== "system" && m.who !== "card"; }).slice(-10).map(function (m) {
-    return { speaker: agentName(m.who), text: String(m.text || "").slice(0, 400) };
+    return { speaker: roomAgentName(r, m.who), text: String(m.text || "").slice(0, 400) };
   });
   var body = {
     event: "turn.request",
@@ -8581,7 +8697,7 @@ function cardParticipantNames(r, relayNames, msgs) {
   }
   ((r && r.members) || []).forEach(function (id) {
     var a = state.agents[id];
-    if (a) add(a.name);
+    if (a) add(roomAgentName(r, id));
   });
   (relayNames || []).forEach(add);
   /* 이번 토론 일정에 올랐던 외부 AI — 답이 늦어 말을 못 했어도 참여자다 */
@@ -9095,7 +9211,7 @@ function tidySummaryLines(arr) {
 function summaryContext(r, n) {
   return r.messages.filter(function (m) { return isCardSource(m) && m.kind !== "greet"; })
     .slice(-(n || 30)).map(function (m) {
-      return { speaker: agentName(m.who), text: String(m.text || "").slice(0, 500) };
+      return { speaker: roomAgentName(r, m.who), text: String(m.text || "").slice(0, 500) };
     });
 }
 async function requestAiSummary(r) {
@@ -9366,7 +9482,7 @@ function docHasMaterial(r) {
 function docContext(r, n) {
   return r.messages.filter(function (m) { return isCardSource(m) && m.kind !== "greet"; })
     .slice(-(n || 36)).map(function (m) {
-      return { speaker: agentName(m.who), text: String(m.text || "").slice(0, 700) };
+      return { speaker: roomAgentName(r, m.who), text: String(m.text || "").slice(0, 700) };
     });
 }
 function docLastCard(r) {
@@ -9477,7 +9593,7 @@ function docFromRoom(r, card, type, note) {
       if (m.who === "system" || m.who === "card" || m.who === "doc" || m.kind === "greet") return;
       var t = String(m.text || "").trim();
       if (!t) return;
-      talk.push([timeLabel(m.at), agentName(m.who), docCleanLine(t, 180)]);
+      talk.push([timeLabel(m.at), roomAgentName(r, m.who), docCleanLine(t, 180)]);
     });
     if (talk.length) sheets.push({ name: "대화 기록", columns: ["시각", "화자", "내용"], rows: talk.slice(-60) });
     return { title: roomTitle + " 정리표", sheets: sheets };
@@ -10023,7 +10139,7 @@ function toggleMember(id) {
     ownerOnlyBlocked(on ? "끼리맘 AI 부르기" : "끼리맘 AI 빼기");
     return;
   }
-  toast(on ? agentName(id) + " · 이 방에 추가했어요" : agentName(id) + " · 이 방에서 뺐어요");
+  toast(on ? roomAgentName(r, id) + " · 이 방에 추가했어요" : roomAgentName(r, id) + " · 이 방에서 뺐어요");
   applyMember(r.id, id, on);
 }
 /* 방 하나의 AI 멤버를 넣거나 뺀다. 화면(방·방 설정·사이드바·@칩)을 한 번에 맞추고,
@@ -10107,14 +10223,14 @@ function rtCanTalk(r) { return rtTalkParts(r).total >= 2; }
 function rtModCandidates(r) {
   var p = rtTalkParts(r);
   var out = [];
-  p.agents.forEach(function (id) { out.push({ kind: "agent", id: id, name: agentName(id) }); });
+  p.agents.forEach(function (id) { out.push({ kind: "agent", id: id, name: roomAgentName(r, id) }); });
   p.people.forEach(function (n) { out.push({ kind: "relay", id: n, name: n }); });
   return out;
 }
 /* 사회자 표기 — 끼리맘 AI면 이름, 내 AI(릴레이)면 닉네임 그대로 */
 function rtModLabel(r, id) {
   if (!id) return "";
-  return rtRoomParts(r).indexOf(id) > -1 ? agentName(id) : String(id);
+  return rtRoomParts(r).indexOf(id) > -1 ? roomAgentName(r, id) : String(id);
 }
 /* 사회자 자동 추천 — 방에 저장된 사회자(아직 멤버) → 방 역할이 사회자인 AI → 피크리 → 참여 AI 첫 번째
    2026-11-23 — 자동 추천은 내장 AI(끼리맘 AI)를 먼저 본다. 외부 AI(&ai=1 · 내 AI)가 자동으로 사회자가 되면
@@ -10335,6 +10451,219 @@ function rtBrandFromSheet() {
   var el = $("rtBrand");
   return el ? String(el.value || "").replace(/\s+/g, " ").trim().slice(0, 300) : "";
 }
+/* =========================================================
+   안건 맞춤 역할 만들기 (2026-11-23 지용 님 — “역할 자체를 바꿔줘”)
+   ---------------------------------------------------------
+   토론을 시작할 때 안건·브랜드를 서버(mode:"roles")에 보내 이 방 프리셋 AI의
+   이름·역할·설명·미션을 새로 짠다. 서버가 없거나 실패하면 키워드 기반 기본 세트로 이어간다.
+   · 대상은 기본 프리셋 끼리맘 AI뿐 — 직접 만든 AI·내 AI·수동 역할은 그대로 둔다.
+   · 결과는 r.dynamicRoles 로 이 방에만 저장하고 settings.dynamicRoles 로 서버에 남긴다.
+   · 안건·브랜드·멤버·사회자가 그대로면 다시 만들지 않는다(같은 방에서 토론을 반복해도 이름이 흔들리지 않게).
+   ========================================================= */
+var RT_ROLES_ON = true;
+var RT_ROLES_VER = "v1";
+/* 서버를 못 쓸 때의 기본 세트 — 안건 낱말로 고르고, 모자라면 앞에서부터 돌려 쓴다. */
+var DYN_ROLE_GROUPS = [
+  { re: /채용|신입|인사|면접|뽑|온보딩|직원|팀장|인력|구인|조직/, roles: [
+    ["채용 기준", "채용 기준", "무엇을 보고 뽑을지 기준과 면접 질문을 정한다.", "diverge"],
+    ["실무 팀장", "현장 역량", "실제 업무를 맡겼을 때 필요한 역량과 성장 속도를 본다.", "diverge"],
+    ["온보딩 코치", "교육·적응", "들어온 뒤 3개월 교육과 적응 계획을 짠다.", "build"],
+    ["비용·리스크", "비용 검증", "채용 비용과 인건비, 되돌리기 어려운 위험을 짚는다.", "risk"],
+    ["조직 문화", "문화 적합", "기존 팀과 부딪히지 않을지, 어떤 성향이 맞는지 본다.", "target"]
+  ] },
+  { re: /마케팅|프로모션|캠페인|행사|할인|블프|블랙프라이데이|브랜딩|광고|SNS|인플루언서|매출|판매|홍보|기획전/, roles: [
+    ["캠페인 기획", "캠페인 기획", "캠페인 콘셉트·구성·일정을 하나의 실행안으로 짠다.", "diverge"],
+    ["타깃 고객", "타깃 고객", "고객이 실제로 반응할지, 무엇이 걸릴지를 고객 말로 짚는다.", "target"],
+    ["실행·채널", "실행·채널", "어디에 어떤 순서로 내보낼지 채널과 준비물을 정한다.", "diverge"],
+    ["성과 검증", "성과 검증", "무엇을 성과로 볼지 기준을 세우고 확인할 것을 짚는다.", "risk"],
+    ["예산 관리", "예산·기간", "예산과 기간 안에서 가능한 범위로 줄이고 대안을 준다.", "build"]
+  ] },
+  { re: /아이|육아|수면|잠|수유|이유식|기저귀|신생아|엄마|아빠|가족/, roles: [
+    ["수면 루틴", "수면·루틴", "아이의 잠드는 순서와 하루 리듬을 구체적으로 짠다.", "diverge"],
+    ["아이 기질", "기질·감정", "아이 성향과 그날 컨디션을 보고 무엇이 맞을지 살린다.", "target"],
+    ["현실 육아", "현실 육아", "엄마·아빠가 실제로 해낼 수 있는 범위로 줄인다.", "build"],
+    ["안전 체크", "안전·건강", "위험한 방법과 병원에 물어볼 것을 짚는다.", "risk"],
+    ["가족 역할", "가족 분담", "누가 언제 무엇을 맡을지 역할을 나눈다.", "diverge"]
+  ] },
+  { re: /건강|병원|증상|열|기침|아파|아픈|치료|검진|약/, roles: [
+    ["증상 정리", "증상 관찰", "언제부터 어떤 증상인지 시간순으로 정리한다.", "diverge"],
+    ["병원 확인", "병원 확인", "어느 진료과에 언제 가야 하는지 확인할 것을 짚는다.", "risk"],
+    ["집에서 돌봄", "집 돌봄", "오늘 집에서 해 볼 수 있는 돌봄을 구체적으로 짠다.", "build"],
+    ["안전 신호", "위험 신호", "바로 응급실로 가야 하는 신호를 짚는다.", "risk"],
+    ["가족 컨디션", "가족 컨디션", "돌보는 사람의 체력과 역할 분담을 본다.", "target"]
+  ] },
+  { re: /여행|나들이|숙소|호텔|항공|코스|제주|부산|해외|캠핑|당일치기/, roles: [
+    ["동선 설계", "일정·동선", "이동 시간을 계산해 하루 동선을 짠다.", "diverge"],
+    ["예산 맞추기", "가성비·비용", "교통·숙소·식비를 숫자로 나눠 총액을 맞춘다.", "build"],
+    ["현지 감각", "현지·분위기", "그 동네 분위기와 실제로 가는 곳을 골라 준다.", "target"],
+    ["준비물", "준비물·예약", "예약 마감과 챙길 것을 놓치지 않게 정리한다.", "diverge"],
+    ["변수 체크", "날씨·대기", "비·주차·대기처럼 일정을 망치는 변수를 먼저 본다.", "risk"]
+  ] },
+  { re: /제품|구매|가성비|가격|비교|용품|사야|살까|추천|리뷰/, roles: [
+    ["제품 비교", "제품 비교", "같은 값이면 구성이 나은 쪽을 골라 비교한다.", "diverge"],
+    ["가격 계산", "가격·구성", "가격·중량·할인을 숫자로 놓고 실제 이득을 계산한다.", "build"],
+    ["실사용 후기", "실사용 관점", "실제로 써 봤을 때 불편한 점을 짚는다.", "target"],
+    ["안전·인증", "안전·인증", "인증·재질·반품 조건에서 걸릴 것을 확인한다.", "risk"],
+    ["대안 찾기", "대안 제시", "더 싸거나 더 나은 대안을 한 가지 제안한다.", "diverge"]
+  ] },
+  { re: /공부|학습|진로|시험|교육|학원|독서|영어/, roles: [
+    ["목표 설정", "목표 설정", "무엇을 어느 수준까지 할지 목표를 숫자로 정한다.", "diverge"],
+    ["학습 루틴", "학습 루틴", "매일 할 수 있는 공부 순서와 시간을 짠다.", "diverge"],
+    ["진로 탐색", "진로·방향", "배운 것이 어디에 쓰이는지 방향을 짚는다.", "target"],
+    ["멘탈 관리", "멘탈·습관", "지치지 않게 하는 작은 습관을 정한다.", "build"],
+    ["점검 기준", "점검·기록", "잘 되고 있는지 무엇으로 확인할지 정한다.", "risk"]
+  ] },
+  { re: /관계|부부|연애|친구|갈등|고민|속마음|상담|이혼|가족/, roles: [
+    ["마음 공감", "마음·경청", "상대의 감정을 먼저 읽고 인정해 준다.", "target"],
+    ["대화 제안", "대화 방법", "지금 해 볼 수 있는 말과 타이밍을 짠다.", "diverge"],
+    ["상대 입장", "상대 시선", "상대가 어떻게 들을지 바꿔 말해 본다.", "build"],
+    ["작은 실천", "작은 실천", "이번 주에 해 볼 한 가지를 정한다.", "diverge"],
+    ["주의할 점", "주의할 점", "관계를 더 상하게 할 말·행동을 짚는다.", "risk"]
+  ] }
+];
+function rtPresetIdsForRoles(r) {
+  return (((r && r.members) || [])).filter(function (id) {
+    var a = state.agents[id];
+    return !!a && isPresetExpertAgent(a);
+  });
+}
+function rtRolesSig(r, agenda, brand, modId) {
+  return [RT_ROLES_VER, String(agenda || "").trim(), String(brand || "").trim(), String(modId || ""),
+    rtPresetIdsForRoles(r).join(",")].join("|");
+}
+function rtRolesFresh(r, sig) {
+  if (!r || !r.dynamicRoles || r.dynamicRolesSig !== sig) return false;
+  return Object.keys(r.dynamicRoles).length > 0;
+}
+/* 서버가 없을 때 — 키워드 세트에서 참여 수만큼 골라 사회자는 중립으로 바꾼다. */
+function rtLocalRoleSet(agenda, brand, ids, r, modId) {
+  var txt = [agenda, brand, (r && r.name) || ""].join(" ");
+  var g = DYN_ROLE_GROUPS[DYN_ROLE_GROUPS.length - 1];
+  for (var i = 0; i < DYN_ROLE_GROUPS.length; i++) {
+    if (DYN_ROLE_GROUPS[i].re.test(txt)) { g = DYN_ROLE_GROUPS[i]; break; }
+  }
+  var out = [];
+  ids.forEach(function (id, i) {
+    var x = g.roles[i % g.roles.length];
+    out.push({ id: id, name: x[0], role: x[1], desc: x[2], mission: x[3] });
+  });
+  var mi = ids.indexOf(modId);
+  if (mi > -1) {
+    /* 사회자에는 중립 역할을 주고, 사회자가 받을 뻔한 세트의 역할은 첫 자리로 옮겨 세트를 통째로 살린다. */
+    var neutral = { name: "진행·조율", role: "진행·조율", desc: "발언 순서를 잡고 쟁점을 정리해 하나의 결론으로 모은다.", mission: "converge" };
+    if (mi > 0) {
+      var keep = out[mi];
+      out[mi] = { id: out[mi].id, name: neutral.name, role: neutral.role, desc: neutral.desc, mission: neutral.mission };
+      out[0] = { id: out[0].id, name: keep.name, role: keep.role, desc: keep.desc, mission: keep.mission };
+    } else {
+      out[0] = { id: out[0].id, name: neutral.name, role: neutral.role, desc: neutral.desc, mission: neutral.mission };
+    }
+  }
+  return out;
+}
+async function rtFetchRoles(r, agenda, brand, modId, ids) {
+  var token = await freshAccessToken();
+  if (!token) return null;
+  var sig = timeoutSignal(12000);
+  try {
+    var res = await postKkiriAi({
+      room_id: r.id, mode: "roles", agenda: agenda, brand: brand, moderator_id: modId || "",
+      agents: ids.map(function (id) {
+        var a = state.agents[id] || {};
+        return { id: id, name: a.name || "", role: a.role || "" };
+      })
+    }, { token: token, signal: sig.signal });
+    sig.done();
+    var data = null;
+    try { data = await res.json(); } catch (e2) { data = null; }
+    if (!data || !data.ok || !Array.isArray(data.roles)) return null;
+    var byId = {};
+    data.roles.forEach(function (x) {
+      if (!x || ids.indexOf(x.id) < 0) return;
+      var name = String(x.name || "").trim();
+      var role = String(x.role || "").trim();
+      if (name.length < 2 || role.length < 2) return;
+      byId[x.id] = { id: x.id, name: name.slice(0, 14), role: role.slice(0, 12), desc: String(x.desc || "").slice(0, 90), mission: String(x.mission || "") };
+    });
+    var out = ids.map(function (id) { return byId[id]; }).filter(Boolean);
+    return out.length === ids.length ? out : null;
+  } catch (e) {
+    try { sig.done(); } catch (e3) {}
+    return null;
+  }
+}
+/* 결과를 이 방에만 적용 — 이름 중복을 풀고, 사회자는 중립 이름으로 고정한다. */
+function rtApplyRoles(r, roles, sig, modId) {
+  if (!r || !roles || !roles.length) return false;
+  var ids = rtPresetIdsForRoles(r);
+  var used = {};
+  var people = [];
+  try { people = relayPeopleOf(r) || []; } catch (e) {}
+  people.forEach(function (n) { if (n) used[String(n).toLowerCase()] = 1; });
+  if (nick()) used[String(nick()).toLowerCase()] = 1;
+  ids.forEach(function (id) {
+    var a = state.agents[id] || {};
+    if (a.name) used[String(a.name).toLowerCase()] = 1;
+  });
+  var map = {};
+  ids.forEach(function (id, i) {
+    var x = roles[i];
+    if (!x) return;
+    var name = String(x.name || "").replace(/[@#]/g, "").replace(/\s+/g, " ").trim().slice(0, 12);
+    if (name.length < 2) name = String(x.role || "").slice(0, 12);
+    if (!name) return;
+    var key = name.toLowerCase(), n = 2, base = name;
+    while (used[key] && n < 6) { name = (base + " " + n).slice(0, 12); key = name.toLowerCase(); n++; }
+    used[key] = 1;
+    map[id] = {
+      name: name,
+      role: String(x.role || name).trim().slice(0, 12),
+      desc: String(x.desc || "").trim().slice(0, 90),
+      mission: String(x.mission || "")
+    };
+  });
+  /* 사회자 — 비판·검증 이름이면 중립 진행 역할로 바꾼다(사회자는 진행·조율 담당). */
+  var modKey = (modId && map[modId]) ? modId : (r.moderator && map[r.moderator] ? r.moderator : "");
+  if (modKey) {
+    var m = map[modKey];
+    if (/(비판|검증|리스크|허점|반대)/.test(m.name + " " + m.role)) {
+      m.name = "진행·조율";
+      m.role = "진행·조율";
+      m.desc = m.desc || "발언 순서를 잡고 쟁점을 정리해 하나의 결론으로 모은다.";
+    }
+    m.mission = "converge";
+  }
+  r.dynamicRoles = map;
+  r.dynamicRolesSig = sig;
+  save();
+  try { if (isRoomOwner(r)) dbSaveSettings(r); } catch (e) {}
+  return true;
+}
+async function rtEnsureRoles(r, agenda, brand, modId) {
+  if (!RT_ROLES_ON || !r) return { applied: false };
+  if (roleModeOf(r) === "manual") return { applied: false };   /* 사용자가 직접 정한 역할은 덮지 않는다 */
+  var ids = rtPresetIdsForRoles(r);
+  if (!ids.length) return { applied: false };
+  var sig = rtRolesSig(r, agenda, brand, modId);
+  if (rtRolesFresh(r, sig)) return { applied: false, reused: true, roles: r.dynamicRoles };
+  var roles = await rtFetchRoles(r, agenda, brand, modId, ids);
+  var source = roles ? "server" : "local";
+  if (!roles) roles = rtLocalRoleSet(agenda, brand, ids, r, modId);
+  if (!roles || !roles.length) return { applied: false };
+  var ok = rtApplyRoles(r, roles, sig, modId);
+  return { applied: ok, source: source, roles: r.dynamicRoles };
+}
+/* 역할이 바뀌었다는 것을 화면에서도 한 줄로 보여 준다. */
+function rtRolesLine(roles) {
+  var names = [];
+  Object.keys(roles || {}).forEach(function (id) {
+    var d = roles[id];
+    if (d && d.name) names.push(d.name);
+  });
+  if (!names.length) return "";
+  return "🎭 이번 안건에 맞춰 AI 역할을 바꿨어요 · " + names.join(" · ") + "\n부를 때는 @이름 으로 부르면 돼요";
+}
+
 /* 토론 시작 시 1회만 웹 검색 — 매 턴 검색하지 않는다(원가·지연 3~10배, 근거 흔들림). */
 var RT_BRIEF_ON = true;
 async function rtFetchBrief(r, agenda, brand) {
@@ -10377,12 +10706,28 @@ async function rtBeginWithBrief(r, brand, agenda, plan, rounds) {
     try { dbSaveSettings(r); } catch (e) {}
     save();
   }
-  var brief = null;
-  if (RT_BRIEF_ON) {
-    toast("최신 사실을 한 번만 확인하고 있어요 · 5~8초");
-    brief = await rtFetchBrief(r, agenda, brand);
-  }
+  /* 역할 짜기와 팩트 브리핑을 동시에 보낸다 — 둘 다 토론 시작 전 1회(대기 5~8초). */
+  if (RT_ROLES_ON || RT_BRIEF_ON) toast("안건에 맞는 역할과 최신 사실을 확인하고 있어요 · 5~8초");
+  var jobs = [RT_ROLES_ON ? rtEnsureRoles(r, agenda, brand, plan.moderator) : Promise.resolve({ applied: false })];
+  jobs.push(RT_BRIEF_ON ? rtFetchBrief(r, agenda, brand) : Promise.resolve(null));
+  var done = await Promise.all(jobs);
   if (!activeRoom() || activeRoom().id !== r.id) return;
+  /* 기다리는 사이 서버 동기화로 방 객체가 새로 생기면(dBApply) 방금 정한 역할을 그 객체로 옮긴다. */
+  var live = activeRoom();
+  if (live && live !== r) {
+    if (r.dynamicRoles && !live.dynamicRoles) {
+      live.dynamicRoles = r.dynamicRoles;
+      live.dynamicRolesSig = r.dynamicRolesSig;
+      save();
+    }
+    r = live;
+  }
+  var roleInfo = done[0] || {};
+  var brief = done[1] || null;
+  if (roleInfo.applied) {
+    var rline = rtRolesLine(r.dynamicRoles);
+    if (rline) addSystem(rline, "info");
+  }
   if (brief) {
     r.brief = brief;
     var line = rtBriefLine(brief);
@@ -11818,13 +12163,13 @@ function exportJson() {
       var roleMap = roomRoleMap(r);
       return {
         id: r.id, name: r.name, kind: r.kind, agenda: r.agenda, roleMode: roleModeOf(r),
-        roles: r.members.map(function (id) { return { name: agentName(id), role: roleMap[id] ? roleMap[id].label : "" }; }),
+        roles: r.members.map(function (id) { return { name: roomAgentName(r, id), role: roleMap[id] ? roleMap[id].label : "" }; }),
         maxTurns: r.maxTurns, budget: r.budget,
         members: r.members.map(agentName),
         stats: r.session,
         messages: r.messages.map(function (m) {
           return {
-            speaker: m.who === "card" ? "토론요약" : agentName(m.who),
+            speaker: m.who === "card" ? "토론요약" : roomAgentName(r, m.who),
             speakerId: m.who, text: m.text || "", at: new Date(m.at).toISOString(),
             source: m.src || null, tokens: m.tin || m.tout ? { in: m.tin || 0, out: m.tout || 0 } : null,
             cost: m.cost || 0, card: m.card || null
@@ -12155,6 +12500,10 @@ function dbApply(roomRows, agentRows, fresh) {
       tone: s.tone === "polite" ? "polite" : "casual",
       /* 브랜드·배경 사실 — 서버 설정에서 되살린다(없으면 이전 값·칸). */
       brand: typeof s.brand === "string" ? s.brand.slice(0, 300) : ((p && p.brand) || ""),
+      /* 안건 맞춤 역할 — 서버 설정에서 되살린다(없으면 이전 값). 이 방에서만 쓰는 이름·역할이다. */
+      dynamicRoles: (s.dynamicRoles && typeof s.dynamicRoles === "object" && !Array.isArray(s.dynamicRoles)) ? s.dynamicRoles
+        : ((p && p.dynamicRoles) || null),
+      dynamicRolesSig: typeof s.dynamicRolesSig === "string" ? s.dynamicRolesSig : ((p && p.dynamicRolesSig) || ""),
       settings: { category: s.category || "", tone: s.tone === "polite" ? "polite" : "casual" },
       discussingAt: Number(s.discussingAt) || 0,
       /* 방장이 켠 자동토론의 진행 지점 — 다른 참가자도 자리 비움·자동 종료를 알고,
@@ -12819,7 +13168,10 @@ async function dbUpdateRoom(r, members) {
       name: String(r.name).slice(0, 60),
       kind: r.kind === "chat" ? "lounge" : "project",
       description: String(r.agenda || "").slice(0, 600),
-      settings: { emoji: r.emoji, mode: "mention", roleMode: roleModeOf(r), roles: r.roles || {}, maxTurns: r.maxTurns, rounds: r.rounds, budget: r.budget, category: categoryKeyOf(r), tone: toneOf(r), aiPeople: r.aiPeople || [] }
+      settings: { emoji: r.emoji, mode: "mention", roleMode: roleModeOf(r), roles: r.roles || {}, maxTurns: r.maxTurns, rounds: r.rounds, budget: r.budget, category: categoryKeyOf(r), tone: toneOf(r), aiPeople: r.aiPeople || [],
+                  brand: String(r.brand || "").slice(0, 300),
+                  dynamicRoles: (r.dynamicRoles && typeof r.dynamicRoles === "object") ? r.dynamicRoles : {},
+                  dynamicRolesSig: String(r.dynamicRolesSig || "").slice(0, 300) }
     }).eq("id", r.id);
     if (res.error) dbToast(dbErrorText("방 설정을 저장하지 못했어요", res.error, "방 설정을 바꿀 수 없어요 · 방장·멤버만 바꿀 수 있어요"));
     for (var i = 0; i < members.length; i++) await dbSetMember(r.id, members[i], true);
@@ -13056,6 +13408,10 @@ function dbSaveSettings(r) {
     settings: { emoji: r.emoji, mode: "mention", roleMode: roleModeOf(r), roles: r.roles || {}, maxTurns: r.maxTurns, rounds: r.rounds, budget: r.budget, category: categoryKeyOf(r), tone: toneOf(r), aiPeople: r.aiPeople || [],
                 /* 2026-11-23 — 브랜드·배경 사실. 새로고침·재입장해도 유지되어 AI 프롬프트 맨 위로 간다. */
                 brand: String(r.brand || "").slice(0, 300),
+                /* 2026-11-23 — 안건 맞춤 역할(이 방 프리셋 AI의 이름·역할·설명·미션).
+                   새로고침·재입장·다른 참가자 화면에서도 같은 이름으로 보이게 방 설정에 남긴다. */
+                dynamicRoles: (r.dynamicRoles && typeof r.dynamicRoles === "object") ? r.dynamicRoles : {},
+                dynamicRolesSig: String(r.dynamicRolesSig || "").slice(0, 300),
                 /* 2026-11-22 — 이 방의 사회자. 새로고침·재입장해도 사회자가 바뀌지 않게 저장한다. */
                 moderator: String(r.moderator || ""),
                 /* 방장이 시트에서 직접 고른 사회자인가 — 자동 추천과 구분해 새로고침 뒤에도 유지(2026-11-23) */
@@ -15390,7 +15746,7 @@ function entryGreetingText(agent, room) {
   var ex = String(agent.expert || "").trim();
   /* 프리셋이 아닌 AI(직접 만든 AI · 이름만 있는 AI) — 이름을 대는 인사 */
   if (!ex || ex === "custom") {
-    var nm = String(agent.name || "").trim() || "끼리맘 AI";
+    var nm = roomAgentName(r, agent.id) || "끼리맘 AI";
     var poolC = casual ? ENTRY_GREET_CUSTOM_CASUAL : ENTRY_GREET_CUSTOM;
     if (topic) poolC = casual ? ENTRY_GREET_TOPIC_CUSTOM_CASUAL : ENTRY_GREET_TOPIC_CUSTOM;
     return entryGreetPick(poolC, agent, r, { name: nm, topic: topic });
@@ -15529,7 +15885,7 @@ function removeExpert(id) {
   if (!canSpendCredits(r)) { ownerOnlyBlocked("끼리맘 AI 빼기"); return; }
   applyMember(r.id, id, false);
   try { renderInviteAgents(); } catch (e) {}
-  toast(agentName(id) + " 이 방에서 빠졌어요 · 다시 누르면 들어와요");
+  toast(roomAgentName(activeRoom(), id) + " 이 방에서 빠졌어요 · 다시 누르면 들어와요");
 }
 
 /** 끼리맘 AI 한 턴. mock 이면 로컬 시뮬레이션, cloud 면 Edge Function 호출. */
@@ -15653,16 +16009,18 @@ async function cloudExpertTurn(agent, phase) {
   var token = await freshAccessToken();
   if (!token) return { skip: true, note: "로그인하면 끼리맘 AI를 무료로 부를 수 있어요 · 다시 로그인해 주세요." };
   var ctx = r.messages.filter(function (m) { return m.who !== "system" && m.who !== "card" && m.kind !== "greet"; }).slice(-14).map(function (m) {
-    return { speaker: agentName(m.who), text: String(m.text || "").slice(0, 600) };
+    return { speaker: roomAgentName(r, m.who), text: String(m.text || "").slice(0, 600) };
   });
   var ro = roleOf(r, agent.id);
+  var dyn = dynRoleOf(r, agent.id);
   var brandNow = String(r.brand || "").replace(/\s+/g, " ").trim().slice(0, 300);
   var factList = (r.brief && Array.isArray(r.brief.facts)) ? r.brief.facts.slice(0, 4) : [];
   var detailTurn = /^(propose|detail|select)$/.test(String(phase || ""));
   var body = {
     room_id: r.id,
     config: kkiriConfigFor(agent),
-    expert: { id: agent.id, name: agent.name, role: ro ? ro.label : (agent.role || ""), persona: (agent.prompt || "") + roleDirective(r, agent), avatar: agent.avatar || "" },
+    expert: { id: agent.id, name: dyn && dyn.name ? dyn.name : agent.name, role: ro ? ro.label : (agent.role || ""),
+      persona: (dyn && dyn.name ? String(dyn.desc || "") : (agent.prompt || "")) + roleDirective(r, agent), avatar: agent.avatar || "" },
     phase: phase || "",
     tone: toneOf(r),
     /* 2026-11-22 지용 님 — 이 AI가 방의 사회자인지 서버에 알린다(사회자 역할 블록·마무리 길이). */
@@ -16063,7 +16421,7 @@ function roomAiMentionNames() {
     if (!k || seen[k]) return;
     seen[k] = 1; out.push(String(n).trim());
   }
-  r.members.forEach(function (id) { var a = state.agents[id]; if (a) add(a.name); });
+  r.members.forEach(function (id) { var a = state.agents[id]; if (!a) return; add(roomAgentName(r, id)); add(a.name); });
   relayPeopleOf(r).forEach(add);
   /* 긴 이름부터 걷어내야 ‘내 제미나이’ 와 ‘제미나이’ 처럼 겹치는 이름이 일부만 지워지지 않는다 */
   out.sort(function (a, b) { return b.length - a.length; });
@@ -16111,7 +16469,7 @@ function act(name) {
   if (name === "card") { onCardButton(); return; }
   if (name === "mention") {
     var r = activeRoom();
-    if (r && r.members.length) insertMention(agentName(r.members[0]));
+    if (r && r.members.length) insertMention(roomAgentName(r, r.members[0]));
     return;
   }
 }
