@@ -3085,6 +3085,11 @@ window.__KKIRI_BOOT = (function () {
     <div class="sheet-head"><h2 id="rtTitle">AI 자동토론</h2><button class="icon-btn" data-close aria-label="닫기">✕</button></div>
     <div class="sheet-body">
       <label class="field"><span>토론 주제</span><textarea id="rtAgenda" placeholder="방 이름(주제)이 그대로 들어가요 · 필요하면 더 좁혀 적어도 돼요" maxlength="300"></textarea></label>
+      <!-- 2026-11-23 — 브랜드·배경 사실. 비워 두면 AI가 브랜드 이름의 낱말로 업종을 추측한다(‘육오빠’ → 고기). -->
+      <label class="field"><span>브랜드·배경 <em class="rt-lbl-note">· 선택</em></span>
+        <input id="rtBrand" type="text" maxlength="200" placeholder="예: 유아·출산용품 브랜드 육오빠 · 타깃 0~3세 부모" autocomplete="off">
+        <em class="auto-hint">적어 둔 사실을 AI가 배경으로만 씁니다 · 비워 두면 사회자가 먼저 묻습니다</em>
+      </label>
       <div class="field"><span>최대 라운드<em class="rt-lbl-note">· 먼저 끝나면 덜 씀</em></span>
         <div class="pick-row" id="rtTurns">
           <!-- 2026-11-23 지용 님 — 칩에는 숫자만(앞의 ‘최대 라운드’가 이미 말해 준다). 읽어 주는 이름은 aria-label 로 남긴다. -->
@@ -3447,7 +3452,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261123-2108-851933d1";
+var APP_BUILD_VER = "20261123-2134-aac78689";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -4396,9 +4401,12 @@ function agentRoleText(r, agent) {
 function roleBoundBlock(r, agent) {
   var txt = agentRoleText(r, agent);
   var bound = roleBoundLine(txt) || roleBoundLine(agent && agent.prompt);
-  return "[역할 경계 — 최우선] 너는 '" + ((agent && agent.name) || "AI") + "'이고 맡은 역할은 '" + (txt || "전문가") +
+  /* 2026-11-23 — 이번 회의 미션이 있으면 역할 경계보다 미션이 우선한다(비판가가 발산 미션을 받을 때 깎기만 하던 문제). */
+  var mk = rtStepMissionNow();
+  return "[역할 경계 — " + (mk ? "이번 미션 아래에서" : "최우선") + "] 너는 '" + ((agent && agent.name) || "AI") + "'이고 맡은 역할은 '" + (txt || "전문가") +
     "'다. 말투는 아래 말투 규칙을 따르되, 말의 내용은 이 역할 밖으로 절대 나가지 않는다." +
-    (bound ? " " + bound : "") +
+    (bound && !mk ? " " + bound : "") +
+    (mk ? " 이번 토론에서는 이 역할 경계보다 위 [이번 회의 미션]이 우선한다. 미션이 발산·실행안이면 비판 성격의 지적을 접고 제안을 5요소로 완성해 낸다." : "") +
     " 다른 담당의 일(공감·제품·수면법·의료·리스크)은 그 담당에게 맡긴다.\n";
 }
 
@@ -6493,9 +6501,88 @@ function loopDetected() {
   return false;
 }
 
+/* ============ 이번 회의 미션 (2026-11-23) ============
+   캐릭터·이름·말투는 그대로 두고, 안건에 맞춰 ‘이번 토론에서 하는 일’만 나눈다.
+   예전에는 5명 중 아이디어를 내는 역할이 마케터 1명뿐이라(발산 1 : 지적 4) 모두 같은 자리에서 겉돌았다
+   (‘우선순위부터 정하자’·‘구체화가 안 됐다’만 반복, 2026-11-23 로그 분석).
+   · 발산·실행안 제안은 전체 발언자의 절반 이상
+   · 타깃·고객 시선 1명, 나머지는 보완(많으면 리스크 1명)
+   · 사회자는 수렴·결론 */
+var RT_MISSION = {
+  diverge:  { label: "발산·실행안", focus: "안건에 대한 실행안을 5요소로 완성해 내기" },
+  target:   { label: "타깃·고객",  focus: "고객이 반응할지·무엇이 걸릴지 짚고 다듬기" },
+  build:    { label: "현실·보완",  focus: "되게 하려면 필요한 보완점만 짚기" },
+  risk:     { label: "리스크·검증", focus: "확인할 것·되돌리기 어려운 위험만 짧게" },
+  converge: { label: "수렴·결론",  focus: "후보를 좁혀 하나로 정하고 결론 내기" }
+};
+function rtMissionText(k) { var m = RT_MISSION[k]; return m ? m.label + " — " + m.focus : ""; }
+function rtStepKey(s) {
+  if (!s) return "";
+  return s.kind === "relay" ? "relay:" + String(s.nick || "").toLowerCase() : "agent:" + String(s.id || "");
+}
+function rtMissionScore(r, step, key) {
+  var a = step.kind === "agent" ? state.agents[step.id] : null;
+  var txt = a ? [a.role, a.desc, a.name, a.prompt].join(" ") : "내 AI 참가자";
+  var sc = step.kind === "relay" ? 1 : 0;
+  if (key === "diverge") sc += /기획|카피|아이디어|창의|마케팅|캐페인|제안|프로모|이벤트|리서처/.test(txt) ? 4 : 0;
+  if (key === "target") sc += /고객|사용자|공감|타깃|엄마|부모/.test(txt) ? 4 : 0;
+  if (key === "risk") sc += /비판|검증|리스크|허점|반대/.test(txt) ? 4 : 0;
+  if (key === "build") sc += /실행|운영|전략|실무|일정|데이터|근거/.test(txt) ? 3 : 0;
+  return sc;
+}
+function rtMissionPlan(r, parts, people, mod) {
+  var slots = [];
+  (parts || []).forEach(function (id) { if (id) slots.push({ kind: "agent", id: id }); });
+  (people || []).forEach(function (n) { if (n) slots.push({ kind: "relay", nick: n }); });
+  var map = {};
+  function isModSlot(s) {
+    if (!mod) return false;
+    return s.kind === "agent" ? sameName(s.id, mod) : sameName(s.nick, mod);
+  }
+  var others = slots.filter(function (s) { return !isModSlot(s); });
+  var mslot = slots.filter(isModSlot)[0];
+  if (!others.length) { if (mslot) map[rtStepKey(mslot)] = "converge"; return map; }
+  var need = Math.max(1, Math.ceil(slots.length / 2));     /* 발산은 전체 발언자의 절반 이상 */
+  var ranked = others.slice().sort(function (a, b) { return rtMissionScore(r, b, "diverge") - rtMissionScore(r, a, "diverge"); });
+  var take = Math.min(need, others.length);
+  for (var i = 0; i < take; i++) map[rtStepKey(ranked[i])] = "diverge";
+  var rest = ranked.slice(take);
+  if (rest.length) {
+    rest.sort(function (a, b) { return rtMissionScore(r, b, "target") - rtMissionScore(r, a, "target"); });
+    map[rtStepKey(rest[0])] = "target";
+    rest = rest.slice(1);
+  }
+  if (rest.length >= 2) {
+    rest.sort(function (a, b) { return rtMissionScore(r, b, "risk") - rtMissionScore(r, a, "risk"); });
+    map[rtStepKey(rest[0])] = "risk";
+    rest = rest.slice(1);
+  }
+  rest.forEach(function (s) { map[rtStepKey(s)] = "build"; });
+  if (mslot) map[rtStepKey(mslot)] = "converge";
+  return map;
+}
+function rtMissionMine(step) {
+  if (!step) return "";
+  return (run.missions && run.missions[rtStepKey(step)]) || step.mission || "";
+}
+function rtStepMissionNow() {
+  return (run.active && run.mode === "roundtable" && run.curStep) ? rtMissionMine(run.curStep) : "";
+}
+
 /* 라운드 = 참여 AI 전원이 한 번씩 발언. 첫 발언과 마지막 정리는 사회자가 맡는다.
    내 AI(릴레이 참가자)도 같은 순서에 들어가고, 그 차례에는 채팅으로 호명해 답을 기다린다.
-   사회자는 사용자가 시트에서 고른 AI(끼리맘 AI 또는 내 AI)를 그대로 쓴다. */
+   사회자는 사용자가 시트에서 고른 AI(끼리맘 AI 또는 내 AI)를 그대로 쓴다.
+
+   2026-11-23 — 라운드 수(1~5)별로 흐름 순서를 자동 배치한다(매 라운드 ‘제안→비판→원래대로’ 반복 제거).
+   · 1라운드: 발산(제안) → 보완 → 사회자 결론까지 1라운드 안에서 완결
+   · 2라운드: 1R 발산+1차 보완 → 2R 후보 줄이기(select)·구체화(detail) → 사회자 결론
+   · 3~5라운드: 1R 발산 → 중간 R 구체화·보완 → 마지막 R 줄이기·확정 → 사회자 결론 */
+function rtPhaseForRound(rno, rounds, mk, selUsed) {
+  if (rno === 1) return mk === "diverge" ? "propose" : "build";
+  if (rounds === 2) return (mk === "diverge" && !selUsed) ? "select" : "detail";
+  if (rno < rounds) return mk === "diverge" ? "detail" : (mk === "risk" ? "risk" : "build");
+  return (mk === "diverge" && !selUsed) ? "select" : (mk === "risk" ? "build" : "detail");
+}
 function buildSchedule(room) {
   var agents = (room.members || []).filter(function (id) { return !!state.agents[id]; });
   var people = (run.relayPeople || []).slice();
@@ -6511,28 +6598,38 @@ function buildSchedule(room) {
   var order = [];
   if (modAgent) order.push({ kind: "agent", id: modAgent });
   else order.push({ kind: "relay", nick: modRelay });
-  agents.forEach(function (id) { if (id !== modAgent) order.push({ kind: "agent", id: id }); });
-  people.forEach(function (n) { if (!modRelay || !sameName(n, modRelay)) order.push({ kind: "relay", nick: n }); });
+  /* 발언 순서 — 발산 담당이 먼저, 보완·리스크 담당이 뒤, 사회자가 처음과 마지막 */
+  var seq = { diverge: 0, target: 1, build: 2, risk: 3, converge: 4 };
+  var rest = [];
+  agents.forEach(function (id) { if (id !== modAgent) rest.push({ kind: "agent", id: id }); });
+  people.forEach(function (n) { if (!modRelay || !sameName(n, modRelay)) rest.push({ kind: "relay", nick: n }); });
+  rest.forEach(function (s) { s._ord = seq[rtMissionMine(s)] != null ? seq[rtMissionMine(s)] : 9; });
+  rest.sort(function (a, b) { return a._ord - b._ord; });
+  rest.forEach(function (s) { delete s._ord; order.push(s); });
   run.order = order.slice();          /* 이번 토론의 발언 순서 — [+1라운드 이어하기]가 같은 순서로 한 라운드를 더 붙인다 */
   var n = order.length;
   if (!n) return [];
   var rounds = clamp(Math.max(1, Number(room.rounds) || Math.round((Number(room.maxTurns) || n * RT_DEFAULT_ROUNDS) / n)), 1, RT_MAX_ROUNDS);
-  var total = Math.max(1, rounds * n);
   var steps = [];
-  for (var i = 0; i < total; i++) {
-    var s = order[i % n];
-    var phase = i === 0 ? "open" : (i === total - 1 ? "converge" : (i < n ? "opinion" : "rebuttal"));
-    steps.push({ kind: s.kind, id: s.id, nick: s.nick, phase: phase });
+  for (var rno = 1; rno <= rounds; rno++) {
+    var selUsed = false;
+    for (var k = 0; k < n; k++) {
+      var s = order[k];
+      var isMod = (s.kind === "agent" && modAgent && s.id === modAgent) || (s.kind === "relay" && modRelay && sameName(s.nick, modRelay));
+      var mk = rtMissionMine(s);
+      var phase;
+      if (isMod) phase = (rno === 1) ? "open" : "opinion";
+      else {
+        phase = rtPhaseForRound(rno, rounds, mk, selUsed);
+        if (phase === "select") selUsed = true;
+      }
+      steps.push({ kind: s.kind, id: s.id, nick: s.nick, phase: phase, mission: mk, round: rno });
+    }
   }
-  /* 마무리는 사회자가 있을 때만 사회자로 바꾼다(사회자가 없으면 마지막 발언자가 그대로 마무리).
-     1라운드만 도는 토론은 마지막 차례를 지우면 그 AI가 아예 말하지 못하므로 정리 발언을 뒤에 붙인다. */
-  if (modAgent) {
-    if (rounds <= 1) steps.push({ kind: "agent", id: modAgent, phase: "converge" });
-    else steps[steps.length - 1] = { kind: "agent", id: modAgent, phase: "converge" };
-  } else if (modRelay) {
-    if (rounds <= 1) steps.push({ kind: "relay", nick: modRelay, phase: "converge" });
-    else steps[steps.length - 1] = { kind: "relay", nick: modRelay, phase: "converge" };
-  }
+  /* 마무리는 사회자가 맨 끝에서 — 모든 라운드 수 공통(1라운드도 결론까지 완결된다). */
+  if (modAgent) steps.push({ kind: "agent", id: modAgent, phase: "converge", mission: "converge", round: rounds });
+  else if (modRelay) steps.push({ kind: "relay", nick: modRelay, phase: "converge", mission: "converge", round: rounds });
+  run.perRound = n;          /* 한 라운드 = 발언자 전원 1회 — 라운드 표시는 이 값을 기준으로 */
   return steps;
 }
 /* 이 내 AI 참가자가 아직 이 방에 있는가 */
@@ -6659,7 +6756,9 @@ async function presenceSettle(room, name, ep) {
 function roundProgress(room) {
   room = room || activeRoom() || {};
   run.maxRound = Math.max(1, Number(run.maxRound) || Number(room.rounds) || 1);
-  var perRound = Math.max(1, Math.ceil((run.schedule || []).length / run.maxRound));
+  /* 한 라운드 = 발언자 전원 1회(run.perRound). 스케줄이 라운드별로 단계가 달라졌으므로(2026-11-23)
+     스케줄 길이로 나누지 않고 buildSchedule 이 적어 둔 값을 그대로 쓴다(마무리 차례는 마지막 라운드로). */
+  var perRound = Math.max(1, Number(run.perRound) || Math.ceil((run.schedule || []).length / run.maxRound));
   run.roundNo = clamp(Math.floor(run.idx / perRound) + 1, 1, run.maxRound);
   run.lastRound = run.roundNo >= run.maxRound;
   run.isLastStep = run.idx === (run.schedule || []).length - 1;
@@ -6677,6 +6776,7 @@ async function loopRoundtable(room, ep) {
       if (ep !== run.epoch) return;
       var step = run.schedule[run.idx];
       if (!step) break;
+      run.curStep = step;                 /* 이번 차례의 미션·라운드를 프롬프트로 넘기기 위해 기억한다 */
       /* 지금 몇 라운드인지 · 마지막 라운드/마지막 발언인지 — 프롬프트와 조기 종결 판단에 준다 */
       roundProgress(room);
       if (budgetExceeded(room)) { endRun("budget", ep); return; }
@@ -7238,6 +7338,8 @@ function startRoundtable(opts) {
     r.moderatorPicked = explicitMod ? 1 : 0;
   }
   r.agenda = agenda;
+  /* 브랜드·배경 사실(2026-11-23) — 시트에서 받은 한 줄을 방에 기억한다. */
+  if (opts.brand != null) r.brand = String(opts.brand || "").replace(/\s+/g, " ").trim().slice(0, 300);
   /* 안건을 방장(나)의 말풍선으로 먼저 올린다 — AI들이 그 말을 받아 토론하는 자연스러운 흐름.
      재토론이면 ‘방향 수정’을 남긴다 — 그래야 AI들도 방장이 방향을 바꿨다는 걸 보고 답한다. */
   addUserMessage(rb ? "🔄 방장 방향 수정: " + rbDir : "📌 토론 안건: " + agenda);
@@ -7261,6 +7363,9 @@ function startRoundtable(opts) {
   run.roundNo = 1; run.maxRound = r.rounds; run.lastRound = r.rounds <= 1; run.isLastStep = false;
   run.relayPeople = people.slice();
   run.roundId = uid("rd");
+  /* 이번 회의 미션 — 캐릭터는 유지하고, 발산·타깃·보완·리스크·수렴을 안건에 맞춰 나눈다(발산은 절반 이상).
+     발언 순서도 미션 순서(발산 → 타깃 → 보완 → 리스크)로 세운다(2026-11-23). */
+  run.missions = rtMissionPlan(r, parts, people, mod);
   run.schedule = buildSchedule(r);
   /* 사회자 선발언 보장 — 1라운드 첫 차례는 반드시 사회자(2026-11-23) */
   ensureModeratorOpensFirst();
@@ -7280,6 +7385,7 @@ function startRoundtable(opts) {
   run.annTurn = null;                 /* 이번 토론의 차례 안내 중복 체크는 새로 시작 */
   run.waitHost = null; run.hostNoPause = false; run.hostAnsweredAt = 0;   /* 사회자 질문 대기는 토론마다 새로 */
   run.extendAsk = null; run.extendedOnce = 0; run.noExtend = false;       /* [+1라운드 이어하기] 제안은 토론마다 새로 */
+  run.curStep = null;
   if (run.extendOffer && run.extendOffer.timer) clearInterval(run.extendOffer.timer);
   run.extendOffer = null;
   if (run.awayTimer) { clearTimeout(run.awayTimer); run.awayTimer = null; }
@@ -8052,7 +8158,12 @@ async function callProvider(provider, key, model, systemText, userText, retried,
 /* 모든 끼리맘 AI 공통 — 뻔한 일반론 대신 실제 이름·수치로 답하게 한다. */
 /* 2026-11-22 지용 님 — 방장이 조건을 말하기 전에 ‘12개월 미만’, ‘4살’, ‘10만 원’처럼 한 경우를 지어내던 문제 */
 var NO_ASSUME_RULE = "조건 미정 금지: 방장이 아이 나이·예산·상황 같은 핵심 조건을 아직 말하지 않았으면 ‘12개월 미만’, ‘4살’, ‘10만 원’처럼 한 경우를 임의로 단정 짓지 말고, 대표 경우 2가지(예: 영아 기준 / 유아 기준)로 짧게 나눠 말한다.";
-var SPECIFICITY_RULE = "구체성: ‘주변 카페’, ‘현지 맛집’, ‘적당히’, ‘잘 알아보세요’ 같은 두루뭉술한 일반론을 쓰지 않는다. 실제 가게·장소·메뉴·대안의 이름과 숫자(가격·시간·거리), 지금 할 행동을 1~2개 이상 콕 집어 넣어 2~3문장으로 날카롭게 답한다.";
+var SPECIFICITY_RULE = "구체성: ‘주변 카페’, ‘현지 맛집’, ‘적당히’, ‘잘 알아보세요’ 같은 두루뭉술한 일반론을 쓰지 않는다. 브랜드·배경 사실과 안건 안에서 실제 대상·행동·조건을 1가지 이상 콕 집어 날카롭게 답한다. 확인되지 않은 업체명·가격·수치는 만들어 내지 않는다.";
+/* 2026-11-23 — 예전엔 ‘구체적인 이름·수치 중 1가지는 반드시’ 라는 지시가 있어서,
+   검색 수단이 없는데도 모델이 빈칸을 그럴듯한 숫자로 채웠다(‘예산 50만 원’, ‘정답자 100명’, ‘CTR 2%’).
+   그 압력을 빼고 ‘확인된 것만 + [확인 필요]’ 규칙으로 바꿨다. */
+var FACT_RULE = "사실 규칙: 확인된 사실만 말한다. 근거는 ①브랜드·배경 사실 ②방장이 한 말 ③앞선 발언에서 확인된 내용 ④팩트 브리핑뿐이다. 확인하지 않은 수치·예산·전환율·경쟁사 사례는 지어내지 말고 ‘[확인 필요]’ 또는 ‘(추정)’으로 표시한다. 수치를 하나도 못 넣어도 괜찮다.";
+var BRAND_MISSING_RULE = "브랜드 미정: 방장이 어떤 제품·서비스를 파는지 아직 말하지 않았으면 업종을 추측해 단정하지 않는다(브랜드 이름의 낱말로 업종을 정하지 않는다). 사회자는 첫 발언에서 ‘어떤 제품·서비스를 파는 브랜드인지, 타깃·예산 범위가 있는지’를 반드시 묻는다.";
 /* 방 말투 — 기본은 다정한 친구말(casual). 방 설정에서 존댓말(polite)로 바꾼다.
    어떤 상황에서도 역할·말투(persona) 지시보다 이 규칙이 우선한다. */
 var TONE_CASUAL_RULE = "친구말: 반드시 다정하고 편한 친구 말투(~했어, ~같아, ~해 보자, ~어때?)로만 답하세요. 절대 '~한다 / ~그렇다 / ~필요하다' 같은 딱딱한 해라체·보고서체나 존댓말(~요/~습니다)을 쓰지 마세요.";
@@ -8072,15 +8183,41 @@ function medicalRuleFor() {
 }
 
 /* 2026-11-22 지용 님 — AI 대사가 너무 방대하다: 어느 단계든 카톡처럼 짧게,
-   1~2문장(60~80자 안팎) 압축. 서론·추임새 금지, 곧바로 알맹이(이름·수치·이유).
-   다만 상세 설명을 요청한 직후 턴("자세히"·"왜?" 등)에는 3~4문장(150자 안팎)까지 허용. */
-var BREVITY_RULE = "반드시 1~2문장(한국어 60~80자 안팎)으로 카톡처럼 짧게 답하세요. ‘좋은 생각이야!’, ‘맞아!’, ‘아까 말한~’ 같은 서론·추임새·앞사람 말 반복 없이 곧바로 들어가고, 구체적인 이름·수치·이유 중 1가지는 반드시 담아 알맹이만 말하세요. 번호 목록(1. 2. 3.)은 쓰지 마세요. 이 길이 규칙은 역할·성격 지시보다 우선합니다. 단, 지금 받은 차례 지시가 '상세 설명 요청'이면 3~4문장(150자 안팎)까지 충분히 설명해도 됩니다.";
+   1~2문장(60~80자 안팎) 압축. 서론·추임새 금지, 곧바로 알맹이.
+   2026-11-23 — 다만 제안(propose)·구체화(detail)·줄이기(select) 차례와 방장이 ‘구체화·실행안·제대로 정해’를
+   요청한 뒤에는 5요소(이름·대상·보상/방법·기간·실행)를 갖춘 120~150자 제안을 허용한다(60~80자 족쇄 예외). */
+var BREVITY_RULE = "반드시 1~2문장(한국어 60~80자 안팎)으로 카톡처럼 짧게 답하세요. ‘좋은 생각이야!’, ‘맞아!’, ‘아까 말한~’ 같은 서론·추임새·앞사람 말 반복 없이 곧바로 들어가고, 브랜드·확인된 사실에 근거한 내용 1가지를 담아 알맹이만 말하세요(근거가 없으면 수치를 지어내지 말고 ‘[확인 필요]’). 번호 목록(1. 2. 3.)은 쓰지 마세요. 이 길이 규칙은 역할·성격 지시보다 우선합니다.";
+var DETAIL_RULE = "3~4문장(공백 포함 120~150자 안팎, 200자 이내)으로 5요소(① 이름 ② 대상 ③ 보상이나 방법 ④ 기간 ⑤ 첫 실행)를 담아 하나의 제안을 완성하세요. 전제 지적·리스크 나열로 끝내지 말고 끝까지 만드세요. 확인하지 않은 수치는 ‘[확인 필요]’로 표시합니다.";
 /* 방의 말투 — tone 미지정(옛 방·옛 설정)은 친구말로 본다 */
 function toneOf(r) {
   var t = r ? String(r.tone || (r.settings && r.settings.tone) || "").toLowerCase() : "";
   return t === "polite" ? "polite" : "casual";
 }
 function toneRuleFor(r) { return TONE_RULES[toneOf(r)] || TONE_CASUAL_RULE; }
+/* 브랜드·배경 + 팩트 브리핑 블록 — 프롬프트 맨 위(2026-11-23). 내 키(BYOK)로 답하는 길에도 같은 사실을 준다. */
+function brandLeadBlock(r) {
+  var brand = String((r && r.brand) || "").replace(/\s+/g, " ").trim();
+  var facts = (r && r.brief && r.brief.facts) || [];
+  var head = brand
+    ? "[브랜드·배경 사실 — 절대 기준]\n· " + brand + "\n· 위 사실이 이 토론의 유일한 배경이다. 브랜드 이름의 낱말을 다른 업종으로 해석하지 않는다(예: ‘육오빠’를 고기·축산으로 읽지 않는다). 사실에 없는 업종의 제품·선물세트·시식권을 예로 들지 않는다.\n"
+    : "[브랜드·배경 사실 — 아직 없음]\n· 방장이 어떤 제품·서비스를 파는지 아직 말하지 않았다. 브랜드 이름의 낱말로 업종을 추측하지 않는다.\n· 사회자라면 첫 발언에서 ‘어떤 제품·서비스를 파는 브랜드인지, 타깃·예산 범위가 있는지’를 반드시 묻는다.\n";
+  if (!facts.length) return head;
+  var lines = [];
+  facts.slice(0, 4).forEach(function (f) {
+    var t = String((f && f.text) || "").trim();
+    if (t) lines.push("· " + t + (f && f.source ? " [" + f.source + "]" : ""));
+  });
+  if (!lines.length) return head;
+  return head + "[팩트 브리핑 — 토론 시작 시 1회 확인된 사실]\n" + lines.join("\n") +
+    "\n· 이 브리핑과 브랜드 사실에 있는 수치·사례만 인용하고, 없는 것은 ‘[확인 필요]’로 표시한다.\n";
+}
+/* 이번 차례의 회의 미션 — 캐릭터는 유지하고 하는 일만 바꾼다. */
+function missionLeadBlock() {
+  var mk = rtStepMissionNow();
+  if (!mk) return "";
+  return "[이번 회의 미션 — 역할 경계보다 우선]\n· 이번 미션: ‘" + (RT_MISSION[mk] ? RT_MISSION[mk].label : mk) + "’ — " + rtMissionText(mk) + "\n" +
+    "· 이름·캐릭터·말투는 그대로 유지하고, 이번 토론에서 하는 일만 이 미션을 따른다. 역할 성격과 부딪히면 미션을 따른다(예: 비판가 성격이어도 미션이 발산이면 실행안을 완성해 낸다).\n";
+}
 function systemFor(agent, phase) {
   var r = activeRoom();
   var team = memberNames(r).join(", ");
@@ -8116,17 +8253,17 @@ function systemFor(agent, phase) {
         : "") +
       (phase === "redirect" ? " 안건 확인·질문·인사 없이 새 방향의 첫 제안(이름·수치)부터 바로 말하라." : "");
   }
-  return roleBoundBlock(r, agent) + toneRuleFor(r) + "\n" + medicalRuleFor() + base + roleDirective(r, agent) + reBlock + modBlock + "\n방: " + r.name + " / 안건: " + (r.agenda || "없음") +
+  return brandLeadBlock(r) + missionLeadBlock() + roleBoundBlock(r, agent) + toneRuleFor(r) + "\n" + base + roleDirective(r, agent) + reBlock + modBlock + "\n방: " + r.name + " / 안건: " + (r.agenda || "없음") +
     "\n함께 있는 AI: " + team +
     "\n규칙: " + toneClause + " " + lengthRule + " 마크다운 제목·이모지 금지. 확인하지 않은 수치·일정·재고를 아는 것처럼 말하지 말고 ‘확인 필요’로 표시한다. 인사·추임새는 넣지 않는다. 앞사람 말은 내용으로 이어받고, 이름 호명은 3~4턴 중 1번 이하로 아껴 쓴다. 자기 이름을 매번 붙이지 않는다." + joinRule +
     " 네 역할 경계(공감 담당은 감정·위로, 가성비 담당은 제품·비용, 비판 담당은 리스크)를 지키고 다른 역할의 답을 대신하지 않는다. 참여자를 부를 때는 채팅방에 보이는 닉네임으로만 부르고, 실명이나 다른 별명으로 부르지 않는다." +
-    roundRule(agent) +
-    "\n" + SPECIFICITY_RULE.replace("1~2개 이상 콕 집어 넣어 2~3문장으로", "1가지 이상 콕 집어 넣어 1~2문장으로") + " " + NO_ASSUME_RULE;
+    roundRule(agent, phase) +
+    "\n" + SPECIFICITY_RULE.replace("1~2개 이상 콕 집어 넣어 2~3문장으로", "1가지 이상 콕 집어 넣어 1~2문장으로") + " " + NO_ASSUME_RULE + " " + FACT_RULE;
 }
 
 /* 상세 설명 요청 판별 — 마지막 발언(사용자 차례 지시)에 '자세히·왜·설명·이유' 등이 있으면
    1~2문장 압축 규칙 대신 3~4문장 설명을 허용한다(2026-11-22 지용 님). */
-var DETAIL_ASK_RE = /(자세히|상세히|자세하게|디테일|왜\s*(그런지|그래|요|야)|설명해|이유가|이유를|근거가|근거를|어떻게\s*하면|풀어서|더\s*말해|이어서\s*설명)/;
+var DETAIL_ASK_RE = /(자세히|상세히|자세하게|디테일|구체화|구체적으로|실행안|실행\s*계획|제대로|확정|정해\s*(줘|달라|보자)|어떤\s*(이벤트|안|것)|왜\s*(그런지|그래|요|야)|설명해|이유가|이유를|근거가|근거를|어떻게\s*하면|풀어서|더\s*말해|이어서\s*설명)/;
 function detailAsked() {
   var r = activeRoom();
   if (!r) return false;
@@ -8138,15 +8275,19 @@ function detailAsked() {
 function brevityForTurn(agent, phase) {
   var r = activeRoom();
   var isMod = isModAgent(agent);
+  var ph = String(phase || "");
   /* 결론은 마무리(converge) 턴에서만 — 마지막 라운드 첫 발언에서 미리 결론 내지 않게 한다 */
-  var closing = isMod && (phase === "converge" || (!!(r && run.lastRound) && !!run.isLastStep));
+  var closing = isMod && (ph === "converge" || (!!(r && run.lastRound) && !!run.isLastStep));
   if (closing) {
     if (rtExtendCan()) return "사회자로서 3~4문장(한국어 최대 200자)으로 ① 결론 ② 남은 이견 ③ 다음 할 일을 또렷하게 정리하세요. 다만 아직 짚을 쟁점이 남았다고 판단되면 요약 대신 빠진 쟁점 1~2개를 짚는 질문만 쓰고 맨 끝에 [연장]을 붙이세요. 인사·추임새·번호 목록은 금지합니다.";
-    return "사회자로서 3~4문장(한국어 최대 200자)으로 ① 결론 ② 남은 이견 ③ 다음 할 일을 또렷하게 정리하세요. 인사·추임새·번호 목록은 금지합니다.";
+    return "사회자로서 3~4문장(한국어 최대 200자)으로 ① 결론 ② 남은 이견 ③ 다음 할 일을 또렷하게 정리하세요. 결론은 발언 인용이 아니라 결정(어떤 안을 고르는지·어떤 조건이면 A 아니면 B)으로 씁니다. 인사·추임새·번호 목록은 금지합니다.";
   }
-  if (detailAsked()) {
-    return "방금 질문이 상세 설명을 요구하므로 3~4문장(한국어 150자 안팎)까지 충분히 설명해도 됩니다. 그래도 서론·추임새 없이 이름·수치·이유 중심으로 말하세요.";
-  }
+  /* 제안·구체화·줄이기 — 5요소 120~150자 (2026-11-23) */
+  if (ph === "propose" || ph === "detail") return DETAIL_RULE;
+  if (ph === "select") return "2~3문장(한국어 120자 안팎)으로 후보 중 가장 실행 가능한 1개(또는 조건부 A/B)를 고르고, 고른 이유와 버린 이유를 한 줄씩 말하세요. 새 아이디어를 또 내지 마세요.";
+  if (ph === "build") return "2문장(한국어 90~120자 안팎)으로 ‘되게 하려면 필요한 보완’ 1~2가지만 말하세요. 깎아내리기·반대만 하는 말은 금지하고 무엇을 어떻게 바꿀지 구체적으로.";
+  if (ph === "risk") return "1~2문장(한국어 90자 안팎)으로 결정 전에 확인할 것·되돌리기 어려운 위험만 1가지 짚으세요. 반복 지적은 금지합니다.";
+  if (detailAsked()) return DETAIL_RULE;
   if (isMod) return "사회자로서 2~3문장(한국어 최대 150자)으로 방향을 잡아 주세요. 인사·추임새는 넣지 않습니다.";
   return BREVITY_RULE;
 }
@@ -8154,10 +8295,16 @@ function brevityForTurn(agent, phase) {
 /* 라운드 진행 규칙 — 1라운드는 전원 발언 보장(종결 금지), 2라운드부터는 사회자만 [종결]로 일찍 마무리할 수 있고,
    마지막 라운드의 '결론'은 사회자만 낸다(2026-11-22 지용 님 — 다른 AI는 마지막에도 보완·반박만).
    agent는 지금 말하는 AI. */
-function roundRule(agent) {
+function roundRule(agent, phase) {
   if (!(run.active && run.mode === "roundtable")) return "";
-  if (Number(run.roundNo) < 2) return " 아직 1라운드다. 절대 [종결]을 붙이지 말고 의견을 충분히 내라.";
+  var ph = String(phase || "");
+  var detailish = /^(propose|build|select|detail|risk)$/.test(ph);
+  if (Number(run.roundNo) < 2) return detailish
+    ? " 아직 1라운드다. [종결]은 붙이지 말고 네 몫의 제안·보완을 끝까지 완성해라."
+    : " 아직 1라운드다. 절대 [종결]을 붙이지 말고 의견을 충분히 내라.";
   var isMod = isModAgent(agent);
+  /* 라운드별 몫이 정해진 차례(제안·보완·줄이기·구체화·검증)는 ‘결론 금지’ 대신 몫을 끝까지 하게 한다. */
+  if (detailish && !isMod) return " 이번 차례의 몫(제안·보완·줄이기·구체화)을 끝까지 완성하고 [종결]은 붙이지 마라. 결론은 사회자가 낸다.";
   if (run.lastRound) {
     if (isMod) {
       /* 마지막 라운드의 첫 사회자 발언과 맨 끝 마무리가 겹쳐 ‘결론 두 번’이 나오지 않게
@@ -8196,11 +8343,21 @@ function phaseInstruction(phase, r, agent) {
     ? "방장이 방향을 바꿨다. 안건 확인·질문 없이, 새 방향에서 바로 첫 제안(이름·수치)을 내고 다음 순서만 한 줄로 알려라. 이미 나온 결론은 다시 말하지 마라."
     : "방장이 방향을 바꿨다. 인사·안건 확인 없이, 새 방향에서 네 역할의 첫 제안(이름·수치)을 바로 말하라. 이미 나온 결론은 다시 말하지 마라.";
   else if (phase === "open") core = isMod
-    ? "사회자로서 ① 안건을 한 줄로 확인 ② 지금 답을 가르는 조건 1개를 방장에게 물음표로 묻기(예: ‘아이가 몇 개월인가요?’) ③ 발언 순서를 알려라."
+    ? "사회자로서 ① 안건을 한 줄로 확인 ② 지금 답을 가르는 조건 1개를 방장에게 물음표로 묻기" +
+      (String((r && r.brand) || "").trim()
+        ? "(브랜드·배경은 이미 있으니 예산·기간·타깃 중 빈 것)"
+        : "(브랜드·업종·타깃·예산을 아직 모르니 ‘어떤 제품·서비스를 파는 브랜드인지, 타깃·예산 범위가 있는지’)") +
+      " ③ 발언 순서를 알려라."
     : "안건을 확인하고 진행할 순서를 짧게 알려라.";
   else if (phase === "opinion") core = isMod
     ? "지금까지 나온 의견의 공통점과 이견을 한 줄로 짚고, 아직 아무도 다루지 않은 관점 1개를 던져라."
     : joinRule;
+  /* 2026-11-23 — 라운드 흐름 단계(제안·보완·줄이기·구체화·검증). 같은 순서 반복 대신 라운드별 몫을 준다. */
+  else if (phase === "propose") core = "이번 라운드는 발산이다. 안건에 대한 실행 가능한 제안 1개를 이름·대상·보상(방법)·기간·첫 실행의 5요소로 120~150자 안에 완성해 내라. 전제 지적·리스크 나열은 하지 말고 네 캐릭터는 말투로만 살린다. 확인 안 된 수치는 ‘[확인 필요]’로 표시한다."
+  else if (phase === "build") core = "앞에 나온 제안 중 하나를 골라 ‘되게 하려면 필요한 보완점’ 1~2가지만 말하라. 깎아내리기·반대만 하는 말은 금지. 무엇을 어떻게 바꿀지 구체적으로."
+  else if (phase === "select") core = "지금까지 나온 후보를 5요소 기준으로 비교해 가장 실행 가능한 1개(또는 조건부 A/B)를 골라라. 고른 이유와 버린 이유를 한 줄씩. 새 아이디어를 또 내지 마라."
+  else if (phase === "detail") core = "지금까지 나온 제안 하나를 5요소(이름·대상·보상/방법·기간·첫 실행)로 120~150자 안에 구체화하라. 새 후보를 내지 말고 하나를 완성하라."
+  else if (phase === "risk") core = "결정 전에 확인해야 할 것과 되돌리기 어려운 위험만 1가지 짧게 짚어라. 반복 지적·전제 의심만 늘어놓지 마라."
   else if (phase === "issue") core = "지금까지 발언에서 쟁점을 두 개로 압축하고, 각 쟁점에 대한 입장을 한 줄씩 정리하라.";
   else if (phase === "rebuttal") core = isMod
     ? "지금까지 나온 의견의 공통점과 이견을 짚고, 다음에 볼 관점 1개를 던져라."
@@ -8217,8 +8374,11 @@ function phaseInstruction(phase, r, agent) {
     : "가벼운 수다입니다. 1~2문장으로 다정한 친구 말투(~했어, ~같아, ~어때?)로 답하세요.";
   else if (phase === "mention") core = "사용자가 이름을 불렀다. 짧게 답하고, 자기 몫에서 도울 일을 한 가지 제안하라.";
   else core = "안건에 맞게 짧게 발언하라.";
-  /* 2026-11-22 지용 님 — 어느 단계든 카톡처럼 짧게. 사회자는 방향을 잡고 마무리하는 몫이다. */
-  return core + " " + brevityForTurn(agent, phase) + (dupRetryNote ? " " + dupRetryNote : "");
+  /* 2026-11-22 지용 님 — 어느 단계든 카톡처럼 짧게. 사회자는 방향을 잡고 마무리하는 몫이다.
+     2026-11-23 — 이번 회의 미션(발산·타깃·보완·리스크·수렴)을 지시 앞에 붙인다. 캐릭터는 유지, 하는 일만 바뀐다. */
+  var mk = rtStepMissionNow();
+  var missionLead = mk && mk !== "converge" ? "[이번 회의 미션] " + rtMissionText(mk) + " — 이번 토론에서 네가 하는 일이다(말투·캐릭터는 그대로). " : "";
+  return missionLead + core + " " + brevityForTurn(agent, phase) + (dupRetryNote ? " " + dupRetryNote : "");
 }
 
 function turnPrompt(agent, phase) {
@@ -9960,22 +10120,35 @@ function rtModLabel(r, id) {
    2026-11-23 — 자동 추천은 내장 AI(끼리맘 AI)를 먼저 본다. 외부 AI(&ai=1 · 내 AI)가 자동으로 사회자가 되면
    사회자 오프닝이 늦거나 비어 ‘📌 토론 안건’ 직후 바로 다른 AI 차례로 넘어갔다(끼리맘 LNXHDQ5R 지용 님 제보).
    방장이 시트에서 직접 고른 사회자(r.moderatorPicked)나 내장 AI가 하나도 없는 방은 그대로 둔다. */
+/* 사회자 자동 추천 — 중립 역할 우선(2026-11-23)
+   제보: 방 ‘연말 프로모션 기획’의 사회자가 비판가(ag_7cpf)로 잡혀, 시작·마무리를 비판 톤으로 하면서
+   방장에게 묻는 질문이 빠지고 마무리가 “재미있어 보이지만…”로 끝났다.
+   → ①방장이 직접 고른 사회자는 그대로 ②자동 추천은 진행·총괄·기획 같은 중립 역할 → 피크리 → 비판가 아닌 AI 순서.
+     비판·검증·리스크 역할은 자동으로 사회자에 앉히지 않는다. */
+function rtCriticRole(r, id) {
+  var ro = roleOf(r, id);
+  var a = state.agents[id] || {};
+  var txt = [ro && ro.key, ro && ro.label, ro && ro.focus, a.role, a.desc, a.name].join(" ");
+  return /비판|검증|리스크|허점|반대|critic|risk/.test(txt);
+}
+function rtNeutralRole(r, id) {
+  var ro = roleOf(r, id);
+  var key = String((ro && ro.key) || "");
+  return /^(lead|advice|calm|proposal|ops)$/.test(key);
+}
 function rtAutoModerator(r, parts) {
   var people = relayPeopleOf(r);
   if (r && r.moderator) {                       /* 사용자가 고른 사회자를 기억한다 */
-    if (parts.indexOf(r.moderator) > -1) return r.moderator;
+    if (parts.indexOf(r.moderator) > -1 && (r.moderatorPicked || !rtCriticRole(r, r.moderator))) return r.moderator;
     var kept = people.filter(function (n) { return sameName(n, r.moderator); });
     if (kept.length && (r.moderatorPicked || !parts.length)) return kept[0];
   }
   if (!parts.length) return people[0] || null;
-  var byRole = parts.filter(function (id) {
-    var ro = roleOf(r, id);
-    var txt = ro ? [(ro.key || ""), (ro.label || ""), (ro.focus || "")].join(" ") : "";
-    return /moderator|사회/.test(txt);
-  });
-  if (byRole.length) return byRole[0];
-  if (parts.indexOf("pikri") > -1) return "pikri";
-  return parts[0];
+  var neutral = parts.filter(function (id) { return rtNeutralRole(r, id) && !rtCriticRole(r, id); });
+  if (neutral.length) return neutral[0];
+  if (parts.indexOf("pikri") > -1 && !rtCriticRole(r, "pikri")) return "pikri";
+  var nonCritic = parts.filter(function (id) { return !rtCriticRole(r, id); });
+  return nonCritic[0] || parts[0];
 }
 /* 방 설정값을 그대로 옮긴 토론 계획 — 시트에는 숫자 입력이 없다 */
 function rtRoomPlan(r) {
@@ -10126,6 +10299,7 @@ function openRoundtable(prefill) {
   /* AI 자동토론은 선택 — 끼리맘 AI·내 AI를 합쳐 2명 이상 모인 뒤에 켠다. */
   if (!rtCanTalk(r)) { toast("AI가 2명 이상이면 AI 자동토론을 켤 수 있어요 · 내 AI는 방 설정에서 ‘AI로 표시’하면 함께 참여해요"); return; }
   $("rtAgenda").value = prefill != null ? prefill : (r.agenda || r.name || "");
+  if ($("rtBrand")) $("rtBrand").value = String(r.brand || "");
   rtSetRounds(r.rounds || RT_DEFAULT_ROUNDS);
   rtModSel = (r.moderatorPicked && r.moderator) ? String(r.moderator) : "";   /* 방장이 예전에 직접 고른 사회자만 유지 */
   rtRenderMods(r);
@@ -10148,10 +10322,74 @@ function rtStart() {
   plan.moderator = rtModSel || rtAutoModerator(r, plan.participants);
   plan.moderatorPicked = !!rtModSel;
   if (plan.participants.length + plan.people.length < 2) { toast("AI가 2명 이상이면 AI 자동토론을 켤 수 있어요 · 한 명이면 @이름으로 부르면 바로 답해요"); return; }
+  var brand = rtBrandFromSheet();
   closeModal("rtModal");
+  rtBeginWithBrief(r, brand, agenda, plan, rounds);
+}
+/* 브랜드·배경 한 줄 — 시트 입력을 방에 기억한다(다음 토론에 그대로 뜨고, 서버 프롬프트 맨 위로 간다) */
+function rtBrandFromSheet() {
+  var el = $("rtBrand");
+  return el ? String(el.value || "").replace(/\s+/g, " ").trim().slice(0, 300) : "";
+}
+/* 토론 시작 시 1회만 웹 검색 — 매 턴 검색하지 않는다(원가·지연 3~10배, 근거 흔들림). */
+var RT_BRIEF_ON = true;
+async function rtFetchBrief(r, agenda, brand) {
+  if (!RT_BRIEF_ON || !r) return null;
+  var token = await freshAccessToken();
+  if (!token) return null;
+  var sig = timeoutSignal(22000);
+  try {
+    var res = await postKkiriAi({ room_id: r.id, mode: "brief", agenda: agenda, brand: brand }, { token: token, signal: sig.signal });
+    sig.done();
+    var data = null;
+    try { data = await res.json(); } catch (e2) { data = null; }
+    if (data && data.ok && data.brief && (data.brief.facts || []).length) return data.brief;
+    return null;
+  } catch (e) {
+    sig.done();
+    return null;
+  }
+}
+function rtBriefLine(brief) {
+  if (!brief) return "";
+  var parts = [];
+  (brief.facts || []).slice(0, 4).forEach(function (f) {
+    var t = String((f && f.text) || "").trim();
+    if (!t) return;
+    var src = String((f && f.source) || "").trim();
+    parts.push("· " + t + (src ? " [" + src + "]" : ""));
+  });
+  var doms = [];
+  (brief.sources || []).forEach(function (s) {
+    var t = String((s && s.title) || "").trim();
+    if (t && doms.indexOf(t) < 0) doms.push(t);
+  });
+  return "🔎 팩트 브리핑 · 토론 시작 시 1회 검색" + (brief.provider ? " (" + brief.provider + ")" : "") +
+    "\n" + parts.join("\n") + (doms.length ? "\n출처: " + doms.slice(0, 4).join(" · ") : "");
+}
+async function rtBeginWithBrief(r, brand, agenda, plan, rounds) {
+  if (String(brand || "") !== String(r.brand || "")) {
+    r.brand = brand;
+    try { dbSaveSettings(r); } catch (e) {}
+    save();
+  }
+  var brief = null;
+  if (RT_BRIEF_ON) {
+    toast("최신 사실을 한 번만 확인하고 있어요 · 5~8초");
+    brief = await rtFetchBrief(r, agenda, brand);
+  }
+  if (!activeRoom() || activeRoom().id !== r.id) return;
+  if (brief) {
+    r.brief = brief;
+    var line = rtBriefLine(brief);
+    if (line) addSystem(line, "info");
+    save();
+  } else if (RT_BRIEF_ON) {
+    addSystem("웹 검색을 지금은 쓸 수 없어요 · 브랜드·방장 정보만으로 토론을 시작해요", "info");
+  }
   startRoundtable({ agenda: agenda, participants: plan.participants, people: plan.people, moderator: plan.moderator,
                     rounds: rounds, turns: rounds * (plan.participants.length + plan.people.length), budget: plan.budget,
-                    cap: rtPickCap() });
+                    cap: rtPickCap(), brand: brand });
 }
 function openBudgetSheet() {
   var r = activeRoom();
@@ -11911,6 +12149,8 @@ function dbApply(roomRows, agentRows, fresh) {
       ownerId: row.owner_id || null,
       hostUid: (p && p.hostUid) ? String(p.hostUid) : "",
       tone: s.tone === "polite" ? "polite" : "casual",
+      /* 브랜드·배경 사실 — 서버 설정에서 되살린다(없으면 이전 값·칸). */
+      brand: typeof s.brand === "string" ? s.brand.slice(0, 300) : ((p && p.brand) || ""),
       settings: { category: s.category || "", tone: s.tone === "polite" ? "polite" : "casual" },
       discussingAt: Number(s.discussingAt) || 0,
       /* 방장이 켠 자동토론의 진행 지점 — 다른 참가자도 자리 비움·자동 종료를 알고,
@@ -12810,6 +13050,8 @@ function dbSaveSettings(r) {
     kind: r.kind === "chat" ? "lounge" : "project",
     description: String(r.agenda || "").slice(0, 600),
     settings: { emoji: r.emoji, mode: "mention", roleMode: roleModeOf(r), roles: r.roles || {}, maxTurns: r.maxTurns, rounds: r.rounds, budget: r.budget, category: categoryKeyOf(r), tone: toneOf(r), aiPeople: r.aiPeople || [],
+                /* 2026-11-23 — 브랜드·배경 사실. 새로고침·재입장해도 유지되어 AI 프롬프트 맨 위로 간다. */
+                brand: String(r.brand || "").slice(0, 300),
                 /* 2026-11-22 — 이 방의 사회자. 새로고침·재입장해도 사회자가 바뀌지 않게 저장한다. */
                 moderator: String(r.moderator || ""),
                 /* 방장이 시트에서 직접 고른 사회자인가 — 자동 추천과 구분해 새로고침 뒤에도 유지(2026-11-23) */
@@ -15410,6 +15652,9 @@ async function cloudExpertTurn(agent, phase) {
     return { speaker: agentName(m.who), text: String(m.text || "").slice(0, 600) };
   });
   var ro = roleOf(r, agent.id);
+  var brandNow = String(r.brand || "").replace(/\s+/g, " ").trim().slice(0, 300);
+  var factList = (r.brief && Array.isArray(r.brief.facts)) ? r.brief.facts.slice(0, 4) : [];
+  var detailTurn = /^(propose|detail|select)$/.test(String(phase || ""));
   var body = {
     room_id: r.id,
     config: kkiriConfigFor(agent),
@@ -15418,11 +15663,20 @@ async function cloudExpertTurn(agent, phase) {
     tone: toneOf(r),
     /* 2026-11-22 지용 님 — 이 AI가 방의 사회자인지 서버에 알린다(사회자 역할 블록·마무리 길이). */
     moderator: isModAgent(agent),
-    instruction: phaseInstruction(phase, r, agent) + roundRule(agent) + (ro ? " 너의 이 방 역할은 ‘" + ro.label + "’이다: " + ro.focus + "." : "") +
+    /* 2026-11-23 — 브랜드·배경 사실 · 이번 회의 미션 · 팩트 브리핑 · 라운드 단계를 서버에 넘긴다.
+       서버는 브랜드를 프롬프트 맨 위에 넣고, 미션을 역할보다 우선하며, 브리핑 밖 수치는 [확인 필요]로 묶는다. */
+    brand: brandNow,
+    mission: rtStepMissionNow(),
+    round_no: Number(run.roundNo) || 0,
+    max_round: Number(run.maxRound) || 0,
+    detail: detailTurn,
+    facts: factList.length ? factList : undefined,
+    instruction: "[브랜드·배경 사실] " + (brandNow ? brandNow + " — 이 사실과 다른 업종으로 해석하지 마라. " : "아직 없다 — 업종·제품·예산을 추측해 단정하지 마라. ") +
+      phaseInstruction(phase, r, agent) + roundRule(agent, phase) + (ro ? " 너의 이 방 역할은 ‘" + ro.label + "’이다: " + ro.focus + "." : "") +
       " " + (toneOf(r) === "polite"
         ? "반드시 한국어 존댓말(~요/~습니다)로만 답하고, 수다·농담·짧은 반응에서도 반말을 쓰지 않는다."
         : "다정하고 편한 친구 말투(~했어, ~같아, ~어때?)로 답하고, ‘~한다/~그렇다’ 같은 해라체·보고서체와 존댓말(~요/~습니다)은 쓰지 않는다.") +
-      " " + SPECIFICITY_RULE + " " + NO_ASSUME_RULE,
+      " " + SPECIFICITY_RULE + " " + NO_ASSUME_RULE + " " + FACT_RULE + (brandNow ? "" : " " + BRAND_MISSING_RULE),
     speakers: memberNames(r),
     context: ctx,
     message_id: uid("a")
