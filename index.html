@@ -3457,7 +3457,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261124-0310-c81ba2c3";
+var APP_BUILD_VER = "20261124-0317-4f83934b";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -10594,12 +10594,16 @@ function rtRolesFresh(r, sig) {
   return false;
 }
 /* 서버가 없을 때 — 키워드 세트에서 참여 수만큼 골라 사회자는 중립으로 바꾼다. */
+function rtRoleGroupIndex(txt) {
+  var t = String(txt || "");
+  for (var i = 0; i < DYN_ROLE_GROUPS.length - 1; i++) {
+    if (DYN_ROLE_GROUPS[i].re.test(t)) return i;
+  }
+  return DYN_ROLE_GROUPS.length - 1;
+}
 function rtLocalRoleSet(agenda, brand, ids, r, modId) {
   var txt = [agenda, brand, (r && r.name) || ""].join(" ");
-  var g = DYN_ROLE_GROUPS[DYN_ROLE_GROUPS.length - 1];
-  for (var i = 0; i < DYN_ROLE_GROUPS.length; i++) {
-    if (DYN_ROLE_GROUPS[i].re.test(txt)) { g = DYN_ROLE_GROUPS[i]; break; }
-  }
+  var g = DYN_ROLE_GROUPS[rtRoleGroupIndex(txt)];
   var out = [];
   ids.forEach(function (id, i) {
     var x = g.roles[i % g.roles.length];
@@ -10827,6 +10831,20 @@ function rtCardMap(r) {
   if (!c || !c.map || c.key !== rtCardKey(r)) return null;
   return c.map;
 }
+/* 서버가 준 역할 이름에 다른 주제(육아·여행·건강·제품…) 낱말이 섞였는가 —
+   예: ‘신입사원 뽑을까’ 방에 ‘육아 체계’ → 이 세트는 버리고 키워드 세트를 그대로 쓴다. */
+function rtRolesOffTopic(roles, r) {
+  var gi = rtRoleGroupIndex([rtTitleAgenda(r, r && r.name), (r && r.brand) || "", (r && r.name) || ""].join(" "));
+  var g = DYN_ROLE_GROUPS[gi];
+  for (var i = 0; i < (roles || []).length; i++) {
+    var s = String((roles[i] && roles[i].name) || "") + " " + String((roles[i] && roles[i].role) || "");
+    if (!s.trim() || g.re.test(s)) continue;
+    for (var j = 0; j < DYN_ROLE_GROUPS.length; j++) {
+      if (j !== gi && DYN_ROLE_GROUPS[j].re.test(s)) return true;
+    }
+  }
+  return false;
+}
 /* 이 방 카탈로그(초대 창에 뜨는 프리셋 AI)의 역할 — 방 제목 결로 고르고 이름이 겹치지 않게 한다 */
 function rtCardRolesBuild(r) {
   var ids = expertCatalogFor(r).map(function (x) { return x.id; });
@@ -10908,6 +10926,7 @@ function rtPrepareCardRoles(r) {
     rtFetchRoles(r, agenda, brand, "", ids, 6000, defs).then(function (roles) {
       delete RT_CARD_WAIT[r.id];
       if (!roles || !roles.length || RT_CARD[r.id] !== mine) return;
+      if (rtRolesOffTopic(roles, r)) return;   /* 다른 주제 낱말이 섞인 세트는 버리고 키워드 세트 유지 */
       /* 카드에서 AI를 이미 넣었다면 서버 이름으로 흔들지 않는다 — 넣은 AI는 카드에서 본 그 이름 그대로 */
       var taken = ids.some(function (eid) {
         var lid = findExpertAgent(eid);
