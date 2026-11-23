@@ -3452,7 +3452,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261123-2134-aac78689";
+var APP_BUILD_VER = "20261123-2140-3db9d253";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -10133,8 +10133,12 @@ function rtCriticRole(r, id) {
 }
 function rtNeutralRole(r, id) {
   var ro = roleOf(r, id);
+  var a = state.agents[id] || {};
   var key = String((ro && ro.key) || "");
-  return /^(lead|advice|calm|proposal|ops)$/.test(key);
+  if (/^(lead|advice|calm|proposal|ops)$/.test(key)) return true;
+  /* 프리셋 전문가는 자기 역할이 고정(own)이라 키로는 안 잡힌다 — 역할 글자로 진행·기획 계열을 찾는다(2026-11-23). */
+  var txt = [ro && ro.label, ro && ro.focus, a.role, a.desc].join(" ");
+  return /(기획|진행|총괄|사회|구조|우선순위|정리|전략)/.test(txt);
 }
 function rtAutoModerator(r, parts) {
   var people = relayPeopleOf(r);
