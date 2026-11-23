@@ -1089,9 +1089,9 @@
   .rt-extend .re-no:hover{background:#FFF3F5}
   .rt-extend .re-count{margin:7px 0 0;font-size:10.5px;font-weight:800;letter-spacing:-.02em;color:#9E7282}
   .rt-extend .re-acts button:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
-  /* 라운드 칩 5개(1~5라운드)가 한 줄에 — 2026-11-23 지용 님 */
+  /* 라운드 칩 5개(숫자 1~5)가 한 줄에 — 2026-11-23 지용 님(칩은 숫자만, 읽어 주는 이름은 aria-label) */
   #rtTurns{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
-  #rtTurns .pick{width:100%;text-align:center;padding:8px 0;font-size:11.5px}
+  #rtTurns .pick{width:100%;text-align:center;padding:8px 0;font-size:12.5px;font-variant-numeric:tabular-nums;line-height:1.2}
 
   .pb-chips{display:flex;align-items:center;gap:5px;min-width:0;flex:1 1 auto;overflow-x:auto;scrollbar-width:none}
   .pb-chips::-webkit-scrollbar{display:none}
@@ -3087,11 +3087,12 @@ window.__KKIRI_BOOT = (function () {
       <label class="field"><span>토론 주제</span><textarea id="rtAgenda" placeholder="방 이름(주제)이 그대로 들어가요 · 필요하면 더 좁혀 적어도 돼요" maxlength="300"></textarea></label>
       <div class="field"><span>최대 라운드<em class="rt-lbl-note">· 먼저 끝나면 덜 씀</em></span>
         <div class="pick-row" id="rtTurns">
-          <button type="button" class="pick" data-rounds="1" aria-pressed="false">1라운드</button>
-          <button type="button" class="pick" data-rounds="2" aria-pressed="false">2라운드</button>
-          <button type="button" class="pick" data-rounds="3" aria-pressed="true">3라운드</button>
-          <button type="button" class="pick" data-rounds="4" aria-pressed="false">4라운드</button>
-          <button type="button" class="pick" data-rounds="5" aria-pressed="false">5라운드</button>
+          <!-- 2026-11-23 지용 님 — 칩에는 숫자만(앞의 ‘최대 라운드’가 이미 말해 준다). 읽어 주는 이름은 aria-label 로 남긴다. -->
+          <button type="button" class="pick" data-rounds="1" aria-pressed="false" aria-label="1라운드">1</button>
+          <button type="button" class="pick" data-rounds="2" aria-pressed="false" aria-label="2라운드">2</button>
+          <button type="button" class="pick" data-rounds="3" aria-pressed="true" aria-label="3라운드">3</button>
+          <button type="button" class="pick" data-rounds="4" aria-pressed="false" aria-label="4라운드">4</button>
+          <button type="button" class="pick" data-rounds="5" aria-pressed="false" aria-label="5라운드">5</button>
         </div>
       </div>
       <div class="field"><span>사회자<em class="rt-lbl-note">· 첫 발언·마무리</em></span>
@@ -3446,7 +3447,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261123-1854-4ffc31c2";
+var APP_BUILD_VER = "20261123-2108-851933d1";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
