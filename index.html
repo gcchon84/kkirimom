@@ -3411,7 +3411,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261123-1450-d92eb3bd";
+var APP_BUILD_VER = "20261123-1510-b365608a";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -14027,27 +14027,36 @@ function bounceJoinFull(why) {
    · 이미 이 방 멤버였던 재입장(새로고침)은 그대로 둔다.
    · 새로 들어온 사람은 전체 12명, 외부 AI(&ai=1)로 들어온 경우 AI 8명까지. */
 async function enforceJoinCapacity(roomId, wasMember) {
-  var r = null;
-  state.rooms.forEach(function (x) { if (String(x.id) === String(roomId)) r = x; });
-  if (!r) return false;
   /* 기존 멤버의 새로고침 재입장은 사람 정원에서 봐준다 — AI 자리는 다시 본다(외부 AI 가 돌아와 9명이 되는 경우) */
   if (wasMember && !selfIsAI()) return false;
-  await waitRoomRoster(roomId, 3500);
+  var r = null;
+  state.rooms.forEach(function (x) { if (String(x.id) === String(roomId)) r = x; });
+  await waitRoomRoster(roomId, r ? 3500 : 400);
   var capS = await roomCapacityFromServer(roomId);
-  var live = roomOccupancy(r);
+  if (!capS && !r) return false;
+  var live = r ? roomOccupancy(r) : { ai: 0, people: 0, total: 0 };
   var ai = Math.max(Number(capS && capS.ai) || 0, live.ai);
   /* 전체 인원은 서버 합계와 화면 합계를 그대로 비교한다 — 서버 멤버 행에 이미 들어 있는 외부 AI 를
      화면 AI 수와 또 더하면 한 명이 두 번 세어진다(2026-11-23) */
   var total = Math.max(Number(capS && capS.total) || 0, live.total);
   var overAI = selfIsAI() && ai > ROOM_AI_MAX;
   var overAll = total > ROOM_PEOPLE_MAX && !wasMember;
+  try {
+    if (typeof console !== "undefined" && console.info) {
+      console.info("[kkiri] join-cap " + JSON.stringify({ roomId: roomId, ai: ai, total: total,
+        wasMember: !!wasMember, hasRoom: !!r, cap: capS ? { ai: capS.ai, people: capS.people, total: capS.total } : null,
+        selfAi: selfIsAI(), overAI: overAI, overAll: overAll }));
+    }
+  } catch (e) {}
   if (!overAI && !overAll) return false;
   var why = overAI ? "AI 자리가 가득 찼어요" : "방 정원(최대 " + ROOM_PEOPLE_MAX + "명)이 다 찼어요";
-  await dbLeaveRoom(r);
+  /* 방 목록에 아직 없어도 서버 행 기준으로 나간다 — 멤버십이 남으면 다음 입장도 계속 막힌다 */
+  var target = r || { id: roomId, remote: true, name: "", members: [], messages: [] };
+  await dbLeaveRoom(target);
   try { delete V3.myRoles[roomId]; } catch (e) {}
   hideRoomLocal(roomId);
   try { presenceLeave(); } catch (e) {}
-  afterRoomRemoved(r, false, true);
+  afterRoomRemoved(target, false, true);
   bounceJoinFull(why);
   return true;
 }
