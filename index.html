@@ -3411,7 +3411,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261123-1545-bee28469";
+var APP_BUILD_VER = "20261123-1825-42c68607";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -4060,9 +4060,12 @@ function creditsLabel(n) { return Math.round(Number(n) || 0).toLocaleString("ko-
    3. 실행 상태
    ========================================================= */
 var RELAY_WAIT_MS = 30000;   /* 내 AI(릴레이) · 사람 참가자 응답을 기다리는 시간(30초) */
-/* 초대 링크(&ai=1)로 들어온 외부 AI는 모델이 느릴 수 있어 더 넉넉하게 기다린다(60초).
+/* 초대 링크(&ai=1)로 들어온 외부 AI는 모델이 느릴 수 있어 더 넉넉하게 기다린다(90초 — 2026-11-23 60초→90초).
    내 제미나이·GPT(내 키 AI)와 끼리맘 AI는 각자의 호출 경로(API_TIMEOUT 60초)를 그대로 쓴다. */
-var RELAY_WAIT_EXTERNAL_MS = 60000;
+var RELAY_WAIT_EXTERNAL_MS = 90000;
+/* 대기 시간이 끝난 뒤 ‘다음 사람으로 넘어가기 전’ 잠깐 더 기다리는 시간 —
+   이 사이에 온 늦은 답은 이 차례 발언으로 받아 대화 순서를 지킨다(2026-11-23 지용 님 제보). */
+var LATE_REPLY_GRACE_MS = 8000;
 /* 방장이 자리를 비운 채 3분이 지나면 자동토론을 안전하게 종료한다(2026-11-22 지용 님 확정).
    접속 명단이 흔들린 찰나(앱 전환·화면 잠금)를 ‘자리 비움’으로 읽지 않도록 유예를 둔다. */
 var HOST_AWAY_MS = 180000;
@@ -4780,7 +4783,9 @@ function renderRoom() {
   var subBits = [];
   var topic = String(r.agenda || "").trim();
   if (topic && topic !== String(r.name || "").trim()) subBits.push("토론 주제: " + topic);
-  subBits.push(categoryLabelOf(r) + " · AI " + r.members.length + "명 · 역할 " + (roleModeOf(r) === "manual" ? "수동" : "자동"));
+  /* AI 인원 — 내장 AI(r.members)만이 아니라 이 방에 접속한 외부 AI(&ai=1 · 내 AI)까지 같은 기준으로 센다
+     (상단 ‘AI 4명’에 외부 AI가 빠져 요약 카드 ‘참여 6명’과 어긺났다 — 2026-11-23 지용 님 제보). */
+  subBits.push(categoryLabelOf(r) + " · AI " + roomAiCount(r) + "명 · 역할 " + (roleModeOf(r) === "manual" ? "수동" : "자동"));
   var subHtml = subBits.map(esc);
   if (isRoomOwner(r)) subHtml.push(icoHtml("crown", "xs") + " 방장");
   $("roomSub").innerHTML = subHtml.join(" · ");
@@ -5682,6 +5687,35 @@ function noteRoomPerson(roomId, name, userId) {
 function noteRoomPeople(roomId, names) {
   (names || []).forEach(function (n) { noteRoomPerson(roomId, n); });
 }
+/* 이 방에서 접속 명단(presence)으로 본 사람 — 접속 키(pk) 하나당 한 명.
+   닉네임을 바꾸면 두 이름이 같이 쌓이지 않고 같은 키의 이름만 바뀐다.
+   (예전엔 이름을 그대로 roomPeopleKnown 에 쌓아 ‘참가자1’이 유령으로 남고 인원수가 8명으로 굳었다 — 2026-11-23) */
+var roomPresencePeers = {};        /* 방 id → { 접속 키: { name, at } } */
+var PEER_MEMORY_MS = 30 * 60 * 1000;
+function noteRoomPeers(roomId, payloads) {
+  if (!roomId) return;
+  var box = roomPresencePeers[roomId] || (roomPresencePeers[roomId] = {});
+  var now = Date.now();
+  (payloads || []).forEach(function (p) {
+    if (!p) return;
+    var k = String((p && p.pk) || (p && p.cid) || "").trim();
+    var n = displayName(String((p && p.nick) || "").trim().slice(0, 20));
+    if (!k || !n) return;
+    box[k] = { name: n, at: now };
+  });
+  Object.keys(box).forEach(function (k) { var e = box[k]; if (!e || now - (Number(e.at) || 0) > PEER_MEMORY_MS) delete box[k]; });
+}
+/* 방에서 본 사람 이름(소문자 키 → 표시 이름). 접속이 끝나도 잠시 기억한다 */
+function roomPeerNames(roomId) {
+  var box = roomPresencePeers[roomId] || {}, out = {}, now = Date.now();
+  Object.keys(box).forEach(function (k) {
+    var e = box[k];
+    if (!e || now - (Number(e.at) || 0) > PEER_MEMORY_MS) { delete box[k]; return; }
+    var n = displayName(String(e.name || "").trim().slice(0, 20));
+    if (n) out[n.toLowerCase()] = n;
+  });
+  return out;
+}
 function peopleOf(r) {
   if (!r) return 0;
   var box = roomPeopleKnown[r.id] || {};
@@ -5698,6 +5732,9 @@ function peopleOf(r) {
     addName(nick());
     onlinePeople().forEach(addName);
   }
+  /* 접속 명단에서 본 사람(이름 변경은 같은 접속 키로 교체된다) */
+  var peers = roomPeerNames(r.id);
+  Object.keys(peers).forEach(function (k) { addName(peers[k]); });
   /* 이 방의 AI — 같은 이름의 사람이 이미 있으면 한 명으로 센다 */
   (r.members || []).forEach(function (id) {
     var a = state.agents[id];
@@ -5748,7 +5785,7 @@ function renderPeople() {
   if (!r || currentView() === "home" || joining) { host.innerHTML = ""; bar.hidden = true; return; }
   /* 이 방에서 확인된 사람(나·접속자·초대된 외부 AI)을 방별로 기억해 둔다 — 홈·사이드바 카드 인원수에 그대로 쓴다 */
   var pplBefore = peopleOf(r);
-  noteRoomPeople(r.id, [nick()].concat(onlinePeople()));
+  noteRoomPeers(r.id, [{ pk: "self", nick: nick() }].concat(presencePayloads()));   /* 나 + 접속 명단(접속 키 단위로 교체) */
   /* 사람이 새로 확인되면 방 목록 카드 인원수도 바로 맞춘다 */
   if (peopleOf(r) !== pplBefore) { renderRoomList(); renderHome(); }
   /* ‘이 방’ 라벨 없이 인원수만 — 사람 아이콘 + 숫자 배지 + 명 (사람 + AI 전체) */
@@ -6350,7 +6387,16 @@ function relayStillHere(room, name) {
    첫 차례의 단계(open · 재토론이면 redirect)는 그대로 사회자가 가져간다. */
 function ensureModeratorOpensFirst() {
   var sch = run.schedule || [];
-  if (!sch.length || !run.moderator) return false;
+  if (!sch.length) return false;
+  /* 사회자 기록이 비었으면 실제로 첫 발언을 하게 된 참가자를 사회자로 적는다 —
+     그래야 오프닝 지시(phase=open)와 조기 종결 권한이 그 AI에 붙는다. */
+  if (!run.moderator) {
+    var head0 = sch[0];
+    if (head0 && head0.kind === "agent") run.moderator = head0.id;
+    else if (head0 && head0.kind === "relay") run.moderator = head0.nick;
+    if (run.moderator) { return true; }
+    return false;
+  }
   var mod = run.moderator;
   function isMod(s) {
     if (!s) return false;
@@ -6364,7 +6410,17 @@ function ensureModeratorOpensFirst() {
   if (isMod(sch[0])) return true;
   var at = -1;
   for (var i = 1; i < sch.length; i++) { if (isMod(sch[i])) { at = i; break; } }
-  if (at < 0) return false;
+  if (at < 0) {
+    /* 사회자가 스케줄에 아예 없으면(외부 AI가 나가는 등) 맨 앞에 사회자 오프닝을 새로 끼워 넣는다 */
+    var room = activeRoom();
+    var step = null;
+    if (room && (room.members || []).indexOf(mod) > -1 && state.agents[mod]) step = { kind: "agent", id: mod, phase: "open" };
+    else if (room && relayStillHere(room, mod)) step = { kind: "relay", nick: String(mod), phase: "open" };
+    if (!step) return false;
+    sch.unshift(step);
+    run.schedule = sch;
+    return true;
+  }
   /* 이번 토론의 첫 단계(open · 재토론이면 redirect) — 사회자가 그 단계를 가져간다 */
   var openPhase = "";
   sch.forEach(function (s) { if (!openPhase && s && (s.phase === "open" || s.phase === "redirect")) openPhase = s.phase; });
@@ -6574,6 +6630,15 @@ async function relayTurn(step, ep) {
      이미 그 차례의 답이 있으면 ‘응답 없음’ 안내를 띄우지 않고 정상 진행한다. */
   if (!reply) reply = await relayReplyVerify(step.nick, known, turnStart);
   if (ep !== run.epoch) return;
+  /* 대기 시간이 끝난 직후 도착한 답이 다음 사람 발언 뒤에 붙어 대화 순서가 어색해지던 문제(2026-11-23).
+     다음 차례로 넘어가기 전에 8초만 더 기다려, 그 안에 오면 ‘응답 없음’ 안내 없이 이 차례 발언으로 받는다.
+     (그 뒤에라도 도착한 답은 채팅에 그대로 남는다 — 말을 지우지는 않는다.) */
+  if (!reply) {
+    reply = await waitRelayReply(step.nick, known, ep, LATE_REPLY_GRACE_MS, null);
+    if (ep !== run.epoch) return;
+    if (!reply) reply = await relayReplyVerify(step.nick, known, turnStart);
+    if (ep !== run.epoch) return;
+  }
   if (reply) {
     /* 조기 종결은 2라운드부터 사회자만 — 1라운드·다른 AI의 [종결]은 표시만 지우고 계속 진행한다 */
     var relayMarked = run.mode === "roundtable" && hasEarlyMark(reply.text);
@@ -6601,7 +6666,7 @@ async function relayTurn(step, ep) {
     return "";
   }
   addSystem("‘" + step.nick + "’ 응답이 없어 다음 차례로 넘어갔어요 · " +
-    Math.round(waitMs / 1000) + "초 기다렸어요", "warn");
+    Math.round((Date.now() - turnStart) / 1000) + "초 기다렸어요", "warn");
   return "";
 }
 /* 그 이름의 새 말이 올라올 때까지 기다린다 — 일시정지 중에는 시간을 세지 않는다. */
@@ -6983,12 +7048,18 @@ function startRoundtable(opts) {
   var parts = (opts.participants || r.members).filter(function (id) { return !!state.agents[id]; });
   var people = (opts.people || []).filter(function (n) { return !!n; });
   if (parts.length + people.length < 2) { toast("AI가 2명 이상이면 AI 자동토론을 켤 수 있어요 · 한 명이면 @이름으로 부르면 바로 답해요"); return; }
-  /* 사회자 — 시트에서 고른 AI(끼리맘 AI 또는 내 AI)를 그대로 쓴다. 없으면 자동 추천 */
+  /* 사회자 — 방장이 시트에서 직접 고른 AI(끼리맘 AI 또는 내 AI)는 그대로 쓴다. 없으면 자동 추천.
+     자동 추천이 외부 AI로 가면 사회자 오프닝 없이 ‘@이름 님 차례’부터 시작됐다(2026-11-23 끼리맘 제보).
+     내장 AI가 있는 방에서는 자동 추천이 반드시 내장 AI를 사회자로 세운다. */
   var pickedMod = opts.moderator &&
     (parts.indexOf(opts.moderator) > -1 || people.some(function (n) { return sameName(n, opts.moderator); }))
     ? opts.moderator : null;
-  var mod = pickedMod || rtAutoModerator(r, parts);
-  if (mod) r.moderator = mod;              /* 고른 사회자를 이 방에 기억한다 */
+  var explicitMod = !!opts.moderatorPicked || !!(pickedMod && r.moderatorPicked && sameName(r.moderator, pickedMod));
+  var mod = explicitMod ? pickedMod : rtAutoModerator(r, parts);
+  if (mod) {                               /* 고른 사회자를 이 방에 기억한다 */
+    r.moderator = mod;
+    r.moderatorPicked = explicitMod ? 1 : 0;
+  }
   r.agenda = agenda;
   /* 안건을 방장(나)의 말풍선으로 먼저 올린다 — AI들이 그 말을 받아 토론하는 자연스러운 흐름.
      재토론이면 ‘방향 수정’을 남긴다 — 그래야 AI들도 방장이 방향을 바꿨다는 걸 보고 답한다. */
@@ -8142,6 +8213,33 @@ function cardWordOverlap(a, b) {
   return inter / Math.min(ka.length, kb.length);
 }
 
+/* 토론요약 카드의 ‘참여 N명’ — 이 토론에 함께한 AI(내장·외부)와 말한 사람을 한 번씩.
+   2026-11-23 지용 님 제보: 예전엔 내장 AI 이름만 세서 실제 7명(내장 4 + 외부 AI 2 + 방장)인데
+   카드에는 ‘참여 6명’으로 적혔다. 상단 AI 인원·실제 발언자와 어김이 없게 같은 기준으로 센다. */
+function cardParticipantNames(r, relayNames, msgs) {
+  var out = [], seen = {};
+  function add(n) {
+    var t = String(n == null ? "" : n).replace(/\s+/g, " ").trim();
+    if (!t) return;
+    var k = t.toLowerCase();
+    if (seen[k]) return;
+    seen[k] = 1; out.push(t);
+  }
+  ((r && r.members) || []).forEach(function (id) {
+    var a = state.agents[id];
+    if (a) add(a.name);
+  });
+  (relayNames || []).forEach(add);
+  /* 이번 토론 일정에 올랐던 외부 AI — 답이 늦어 말을 못 했어도 참여자다 */
+  var sched = (r && r.auto && r.auto.sched) || [];
+  sched.forEach(function (s) { if (s && s.k === "r") add(s.n); });
+  /* 방장 등 사람이 남긴 말(안건을 올린 방장 포함) */
+  (msgs || []).forEach(function (m) {
+    if (!m || m.who !== "user" || m.relay) return;
+    add(m.name || "");
+  });
+  return out;
+}
 function buildCard(r, opts) {
   opts = opts || {};
   var start = (r.session && r.session.startIndex) || 0;
@@ -8412,7 +8510,7 @@ function buildCard(r, opts) {
     checks: checks,
     todos: todos,
     stats: {
-      members: memberNames(r).concat(relayNames),
+      members: cardParticipantNames(r, relayNames, (r.messages || []).slice(start)),
       turns: turns,
       tokens: tokens,
       cost: cost,
@@ -9664,13 +9762,16 @@ function rtModLabel(r, id) {
   if (!id) return "";
   return rtRoomParts(r).indexOf(id) > -1 ? agentName(id) : String(id);
 }
-/* 사회자 자동 추천 — 방에 저장된 사회자(아직 멤버) → 방 역할이 사회자인 AI → 피크리 → 참여 AI 첫 번째 */
+/* 사회자 자동 추천 — 방에 저장된 사회자(아직 멤버) → 방 역할이 사회자인 AI → 피크리 → 참여 AI 첫 번째
+   2026-11-23 — 자동 추천은 내장 AI(끼리맘 AI)를 먼저 본다. 외부 AI(&ai=1 · 내 AI)가 자동으로 사회자가 되면
+   사회자 오프닝이 늦거나 비어 ‘📌 토론 안건’ 직후 바로 다른 AI 차례로 넘어갔다(끼리맘 LNXHDQ5R 지용 님 제보).
+   방장이 시트에서 직접 고른 사회자(r.moderatorPicked)나 내장 AI가 하나도 없는 방은 그대로 둔다. */
 function rtAutoModerator(r, parts) {
   var people = relayPeopleOf(r);
   if (r && r.moderator) {                       /* 사용자가 고른 사회자를 기억한다 */
     if (parts.indexOf(r.moderator) > -1) return r.moderator;
     var kept = people.filter(function (n) { return sameName(n, r.moderator); });
-    if (kept.length) return kept[0];
+    if (kept.length && (r.moderatorPicked || !parts.length)) return kept[0];
   }
   if (!parts.length) return people[0] || null;
   var byRole = parts.filter(function (id) {
@@ -9698,12 +9799,15 @@ function rtRoomPlan(r) {
 /* 토론 시작 시트의 라운드 칩 — AI 전원이 한 번씩 말하면 1라운드 */
 var RT_ROUNDS = [1, 3, 5, 10];
 var RT_DEFAULT_ROUNDS = 3;
-/* 사회자 선택 칩 — 이 방에서 지금 말할 수 있는 AI(끼리맘 AI + 내 AI) 전부 */
+/* 사회자 선택 칩 — 이 방에서 지금 말할 수 있는 AI(끼리맘 AI + 내 AI) 전부
+   rtModSel = 이 시트에서 방장이 실제로 누른 칩(없으면 자동 추천). 예전엔 자동 추천 칩도
+   aria-pressed=true 로 그려서 ‘방장이 골랐다’와 구분이 안 됐다(2026-11-23). */
+var rtModSel = "";
 function rtRenderMods(r) {
   var row = $("rtMods");
   if (!row || !r) return;
   var cands = rtModCandidates(r);
-  var cur = rtPickMod(r);
+  var cur = rtModSel || rtAutoModerator(r, rtRoomParts(r));
   var h = "";
   cands.forEach(function (c) {
     h += '<button type="button" class="pick" data-mod="' + esc(c.id) + '" aria-pressed="' +
@@ -9712,20 +9816,21 @@ function rtRenderMods(r) {
   });
   row.innerHTML = h;
 }
-/* 지금 선택된 사회자 — 눌린 칩 → 없으면 자동 추천 */
+/* 지금 선택된 사회자 — 방장이 누른 칩 → 없으면 자동 추천 */
 function rtPickMod(r) {
-  var on = document.querySelector("#rtMods [data-mod][aria-pressed=\"true\"]");
-  if (on) return on.getAttribute("data-mod");
+  if (rtModSel) return rtModSel;
   return rtAutoModerator(r, rtRoomParts(r));
 }
 /* 다른 AI 칩을 누르면 그 AI가 이번 토론의 사회자 — 방(r.moderator)에 기억한다 */
 function rtSetMod(id) {
   var r = activeRoom();
   if (!r || !id) return;
+  rtModSel = String(id);
   Array.prototype.forEach.call(document.querySelectorAll("#rtMods [data-mod]"), function (b) {
     b.setAttribute("aria-pressed", b.getAttribute("data-mod") === id ? "true" : "false");
   });
   r.moderator = id;
+  r.moderatorPicked = 1;                   /* 방장이 직접 고른 사회자 — 자동 추천으로 바꾸지 않는다 */
   save();
   if (isRoomOwner(r)) dbSaveSettings(r);   /* 고른 사회자를 서버에 남긴다 — 새로고침·재입장에도 유지 */
   rtRefreshSummary();
@@ -9827,6 +9932,7 @@ function openRoundtable(prefill) {
   if (!rtCanTalk(r)) { toast("AI가 2명 이상이면 AI 자동토론을 켤 수 있어요 · 내 AI는 방 설정에서 ‘AI로 표시’하면 함께 참여해요"); return; }
   $("rtAgenda").value = prefill != null ? prefill : (r.agenda || r.name || "");
   rtSetRounds(r.rounds || RT_DEFAULT_ROUNDS);
+  rtModSel = (r.moderatorPicked && r.moderator) ? String(r.moderator) : "";   /* 방장이 예전에 직접 고른 사회자만 유지 */
   rtRenderMods(r);
   rtRenderCapChips(Math.max(1, Math.round(Number(r.budget)) || 300));
   rtSetCap(r.discussCap || 0);
@@ -9842,7 +9948,10 @@ function rtStart() {
   if (!agenda) { toast("토론 주제를 적어 주세요"); $("rtAgenda").focus(); return; }
   var plan = rtRoomPlan(r);
   var rounds = rtPickRounds();
-  plan.moderator = rtPickMod(r);          /* 시트에서 고른 사회자(없으면 자동 추천) */
+  /* 시트에서 방장이 직접 누른 사회자 칩만 ‘고른 사회자’로 넘긴다 — 누른 칩이 없으면 자동 추천에 맡긴다
+     (자동 추천이 외부 AI로 가서 사회자 오프닝이 비던 문제, 2026-11-23). */
+  plan.moderator = rtModSel || rtAutoModerator(r, plan.participants);
+  plan.moderatorPicked = !!rtModSel;
   if (plan.participants.length + plan.people.length < 2) { toast("AI가 2명 이상이면 AI 자동토론을 켤 수 있어요 · 한 명이면 @이름으로 부르면 바로 답해요"); return; }
   closeModal("rtModal");
   startRoundtable({ agenda: agenda, participants: plan.participants, people: plan.people, moderator: plan.moderator,
@@ -11597,6 +11706,7 @@ function dbApply(roomRows, agentRows, fresh) {
       budget: typeof s.budget === "number" ? clamp(Math.round(s.budget), 100, 5000) : 200,
       /* 이 방의 사회자 — 서버 설정에서 되살린다(없으면 시작할 때 첫 AI가 사회자) */
       moderator: typeof s.moderator === "string" ? s.moderator : "",
+      moderatorPicked: (s.moderatorPicked === 1 || s.moderatorPicked === true) ? 1 : 0,
       members: mem, status: p ? p.status : "idle",
       aiPeople: Array.isArray(s.aiPeople) ? s.aiPeople.filter(function (n) { return typeof n === "string" && n; }).slice(0, 40) : [],
       createdAt: Date.parse(row.created_at) || Date.now(),
@@ -11706,13 +11816,23 @@ function presenceLeave() {
   if (db.client) { try { db.client.removeChannel(ch); } catch (e) {} }
   renderPresence();
 }
+/* 이 탭의 접속 키 — 한 번 정하면 그 탭에서는 그대로 쓴다.
+   예전엔 presenceJoin 마다 새 키를 만들어, 닉네임을 바꾸며 다시 접속하면
+   ‘참가자1’과 ‘피크리’가 둘로 보이고 인원수가 한 명 더 세어졌다(2026-11-23 지용 님 제보). */
+function presenceKeyId() {
+  try {
+    var v = sessionStorage.getItem("kkiri.pk.v1");
+    if (!v) { v = "p" + Math.random().toString(36).slice(2, 10); sessionStorage.setItem("kkiri.pk.v1", v); }
+    return v;
+  } catch (e) { return "p" + Math.random().toString(36).slice(2, 10); }
+}
 function presenceJoin(roomId, force) {
   if (!db.ready || !db.client || !roomId) return;
   if (!force && presence.roomId === roomId && presence.channel) return;
   presenceLeave();
   presence.roomId = roomId;
   var ch = db.client.channel("kkiri-presence-" + roomId, {
-    config: { presence: { key: "p" + Math.random().toString(36).slice(2, 10) }, broadcast: { self: true } }
+    config: { presence: { key: presenceKeyId() }, broadcast: { self: true } }
   });
   presence.channel = ch;
   /* 방을 새로 열면 이전 방의 명단은 버리고, 처음 2.5초 동안의 동기화는 ‘이미 있던 사람’으로 본다. */
@@ -11819,14 +11939,24 @@ function presencePayloads() {
   if (!ch || !ch.presenceState) return out;
   var st = {};
   try { st = ch.presenceState() || {}; } catch (e) { return out; }
-  var now = Date.now(), names = [];
+  var now = Date.now(), names = [], byKey = {};
   Object.keys(st).forEach(function (k) {
     (st[k] || []).forEach(function (p) {
       if (!p) return;
-      out.push(p);
-      var n = displayName(String((p && p.nick) || "").trim().slice(0, 20));
-      if (n) names.push(n);
+      /* 같은 접속(탭·AI 세션)이 닉네임을 바꾸면 예전 이름 payload 가 잠시 함께 남는다 —
+         접속 키(pk)가 같으면 가장 최근 것 하나만 남긴다(2026-11-23 ‘참가자1 + 피크리’ 유령 인원). */
+      var key = String((p && p.pk) || (p && p.cid) || k || "").trim() || ("n:" + String((p && p.nick) || ""));
+      var at = Number(p && p.at) || 0;
+      var prev = byKey[key];
+      if (prev) { if (at >= prev.at) { prev.p = p; prev.at = at; } return; }
+      byKey[key] = { p: p, at: at };
     });
+  });
+  Object.keys(byKey).forEach(function (k) {
+    var p = byKey[k].p;
+    out.push(p);
+    var n = displayName(String((p && p.nick) || "").trim().slice(0, 20));
+    if (n) names.push(n);
   });
   if (names.length) presenceNoteSeen(names, now);   /* 접속이 살아 있는 동안 계속 시각을 되감는다 */
   return out;
@@ -11867,7 +11997,7 @@ function presenceTrack() {
   var ch = presence.channel;
   if (!ch) return;
   if (!presence.since) presence.since = new Date().toISOString();
-  try { ch.track({ nick: nick(), cid: clientId(), since: presence.since, ai: selfIsAI() ? 1 : 0 }); } catch (e) {}
+  try { ch.track({ nick: nick(), cid: clientId(), pk: presenceKeyId(), at: Date.now(), since: presence.since, ai: selfIsAI() ? 1 : 0 }); } catch (e) {}
 }
 /* 접속자 중 AI로 알려진 이름 — presence 의 ai 플래그 또는 방 설정의 ‘AI로 표시’.
    끼리맘 AI(서버 호출)와 달리 이들은 채팅으로 호명했을 때 스스로 답하는 ‘내 AI’다. */
@@ -12487,6 +12617,8 @@ function dbSaveSettings(r) {
     settings: { emoji: r.emoji, mode: "mention", roleMode: roleModeOf(r), roles: r.roles || {}, maxTurns: r.maxTurns, rounds: r.rounds, budget: r.budget, category: categoryKeyOf(r), tone: toneOf(r), aiPeople: r.aiPeople || [],
                 /* 2026-11-22 — 이 방의 사회자. 새로고침·재입장해도 사회자가 바뀌지 않게 저장한다. */
                 moderator: String(r.moderator || ""),
+                /* 방장이 시트에서 직접 고른 사회자인가 — 자동 추천과 구분해 새로고침 뒤에도 유지(2026-11-23) */
+                moderatorPicked: r.moderatorPicked ? 1 : 0,
                 /* 방장이 켜 둔 AI 자동토론 표시 — 방장이 아닌 참여자 화면의 작은 상태 배너용 */
                 discussingAt: (run.active && run.mode === "roundtable") ? Date.now() : 0,
                 /* 자동토론 체크포인트(안건·라운드·다음 차례) — 복귀 재개와 참가자 안내에 쓴다 */
@@ -12862,6 +12994,9 @@ function roomPeopleNameMap(r) {
     add(nick());
     try { onlinePeople().forEach(add); } catch (e) {}
   }
+  /* 접속 명단에서 본 사람(이름 변경은 교체) — 방 정원·인원 표기가 같은 숫자를 쓰게 */
+  var peers = roomPeerNames(r.id);
+  Object.keys(peers).forEach(function (k) { add(peers[k]); });
   var box = roomPeopleKnown[r.id] || {};
   Object.keys(box).forEach(function (k) { add(box[k]); });
   return names;
@@ -14729,15 +14864,76 @@ var ENTRY_GREET_CUSTOM_CASUAL = [
   "반가워! 난 {name}. 같이 얘기해 보자.",
   "안녕, 난 {name}. 궁금한 거 있으면 편하게 말해 줘."
 ];
+/* ---------- 방 제목을 인사에 녹인 풀 (2026-11-23 지용 님 요청) ----------
+   “방제목에 썼는데 너무 생뚱맞게 사진처럼 나오는 것보다” — 방 제목(주제)이 있으면
+   그 주제를 자연스럽게 안고 들어간다(예: ‘블프 이벤트 기획’). 톤은 가벼운 한 줄 그대로다. */
+var ENTRY_GREET_TOPIC = [
+  "안녕하세요! ‘{t}’ 얘기라면 저도 같이 고민해 볼게요.",
+  "반가워요! ‘{t}’ 고민, 편하게 나눠 주세요.",
+
+  "안녕하세요! ‘{t}’ 이야기라면 저도 같이 볼게요.",
+  "반갑습니다! ‘{t}’ 고민, 편하게 나눠 주세요.",
+  "안녕하세요! ‘{t}’ 같이 살펴봐요.",
+  "반갑습니다! ‘{t}’ 이야기부터 들려주세요.",
+  "안녕하세요! ‘{t}’ 쪽으로 함께 생각해 볼게요.",
+  "반가워요! ‘{t}’ 이야기, 같이 풀어 봐요.",
+  "안녕하세요! ‘{t}’ 얘기, 저도 궁금해요.",
+  "반갑습니다! ‘{t}’ 관련해서 같이 머리 맞대 봐요."
+];
+var ENTRY_GREET_TOPIC_CASUAL = [
+  "안녕! ‘{t}’ 고민이라면 나도 같이 생각해 볼게.",
+  "반가워! ‘{t}’ 얘기, 편하게 말해 줘.",
+
+  "안녕! ‘{t}’ 얘기라면 나도 궁금해.",
+  "반가워! ‘{t}’ 고민, 같이 풀어 보자.",
+  "안녕! ‘{t}’ 이야기부터 해 볼까?",
+  "반가워! ‘{t}’ 쪽으로 나도 같이 생각해 볼게.",
+  "안녕! ‘{t}’ 때문에 모인 거지? 잘 왔어.",
+  "반가워! ‘{t}’ 얘기, 나도 같이 들을게.",
+  "안녕! ‘{t}’ 이거 같이 머리 맞대 보자.",
+  "반가워! ‘{t}’ 얘기라니, 재밌겠다."
+];
+var ENTRY_GREET_TOPIC_CUSTOM = [
+  "안녕하세요! 저는 {name}입니다. ‘{t}’ 이야기 함께 나눠 봐요.",
+  "반갑습니다! 저는 {name}입니다. ‘{t}’ 편하게 말씀해 주세요.",
+  "안녕하세요, {name}입니다. ‘{t}’ 같이 살펴봐요."
+];
+var ENTRY_GREET_TOPIC_CUSTOM_CASUAL = [
+  "안녕! 난 {name}. ‘{t}’ 얘기라면 나도 같이 볼게.",
+  "반가워! 난 {name}. ‘{t}’ 같이 풀어 보자.",
+  "안녕, 난 {name}. ‘{t}’ 얘기 들려줘."
+];
+/* 방 제목이 인사에 쓸 만한 주제인가 — 기본 이름(생 방·대화방 등)은 주제로 쓰지 않는다 */
+var GREET_TITLE_SKIP = /^(새 ?방|대화방|새 ?대화방|빈 ?방|방|테스트|test)$/i;
+function greetTopicOf(room) {
+  if (!room) return "";
+  var cands = [String(room.agenda || "").trim(), String(room.name || "").trim()];
+  for (var i = 0; i < cands.length; i++) {
+    var t = cands[i].replace(/\s+/g, " ").trim();
+    if (t.length < 2 || GREET_TITLE_SKIP.test(t)) continue;
+    if (/^\d+$/.test(t)) continue;                 /* 숫자만 있는 제목은 주제로 안 쓴다 */
+    return t.length > 24 ? t.slice(0, 24).trim() + "…" : t;
+  }
+  return "";
+}
 /* 인사 하나 고르기 — AI마다 시작 위치가 달라 같은 방에서도 문장이 겹치지 않는다.
-   이미 이 방에서 다른 AI가 쓴 인사(옛 역할 인사 포함)는 건너뛰고 다음 후보로 간다. */
-function entryGreetPick(pool, agent, room, name) {
+   이미 이 방에서 다른 AI가 쓴 인사(옛 역할 인사 포함)는 건너뛰고 다음 후보로 간다.
+   vars 는 {name, topic} 또는 예전처럼 이름 문자열 하나. */
+function entryGreetPick(pool, agent, room, vars) {
   if (!pool || !pool.length) return "";
   var used = {};
   ((room && room.messages) || []).forEach(function (m) {
     if (m && (m.kind === "greet" || m.src === "greet") && m.who !== agent.id && m.text) used[String(m.text)] = 1;
   });
-  function fill(t) { return name == null ? t : String(t).replace(/\{name\}/g, name); }
+  function fill(t) {
+    var s = String(t);
+    if (vars && typeof vars === "object") {
+      if (vars.name != null) s = s.replace(/\{name\}/g, vars.name);
+      if (vars.topic != null) s = s.replace(/\{t\}/g, vars.topic);
+      return s;
+    }
+    return vars == null ? s : String(s).replace(/\{name\}/g, vars);
+  }
   var start = hash(String(agent.id || "") + "|" + String(agent.name || "")) % pool.length;
   for (var i = 0; i < pool.length; i++) {
     var t = fill(pool[(start + i) % pool.length]);
@@ -14749,13 +14945,18 @@ function entryGreetingText(agent, room) {
   if (!agent) return "";
   var r = room || activeRoom();
   var casual = toneOf(r) === "casual";
+  var topic = greetTopicOf(r);            /* 방 제목(주제) — 있으면 인사에 녹인다 */
   var ex = String(agent.expert || "").trim();
   /* 프리셋이 아닌 AI(직접 만든 AI · 이름만 있는 AI) — 이름을 대는 인사 */
   if (!ex || ex === "custom") {
     var nm = String(agent.name || "").trim() || "끼리맘 AI";
-    return entryGreetPick(casual ? ENTRY_GREET_CUSTOM_CASUAL : ENTRY_GREET_CUSTOM, agent, r, nm);
+    var poolC = casual ? ENTRY_GREET_CUSTOM_CASUAL : ENTRY_GREET_CUSTOM;
+    if (topic) poolC = casual ? ENTRY_GREET_TOPIC_CUSTOM_CASUAL : ENTRY_GREET_TOPIC_CUSTOM;
+    return entryGreetPick(poolC, agent, r, { name: nm, topic: topic });
   }
-  return entryGreetPick(casual ? ENTRY_GREET_CASUAL : ENTRY_GREET, agent, r, null);
+  var pool = casual ? ENTRY_GREET_CASUAL : ENTRY_GREET;
+  if (topic) pool = casual ? ENTRY_GREET_TOPIC_CASUAL : ENTRY_GREET_TOPIC;
+  return entryGreetPick(pool, agent, r, topic ? { name: null, topic: topic } : null);
 }
 /* 방에 새로 들어온 끼리맘 AI의 인사 1줄 — 크레딧 0. 입장 액션에서만 1회 부른다.
    여러 명이 한꺼번에 들어올 때 INSERT 가 겹쳐 일부가 빠지지 않도록, 보낸 프로미스를 돌려주고
