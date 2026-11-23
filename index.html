@@ -3405,7 +3405,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261123-1407-4d3aa34d";
+var APP_BUILD_VER = "20261123-1420-a7ec9714";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -12865,12 +12865,6 @@ function roomOccupancy(r) {
   var people = Object.keys(roomPeopleNameMap(r)).length;
   return { ai: ai, people: people, total: ai + people };
 }
-/* 이 방에 지금 들어오는 나까지 더한 자리 — 접속 명단이 붙기 전(입장 직후)에 쓴다 */
-function roomSelfCapacity(r) {
-  var live = roomOccupancy(r);          /* roomAiCount 가 내 외부 AI 자리까지 센다 */
-  return { ai: live.ai, people: live.people, total: live.total,
-           overAI: selfIsAI() && live.ai > ROOM_AI_MAX, overAll: live.total > ROOM_PEOPLE_MAX };
-}
 /* AI 를 방에 넣기 전 자리 확인 — 막혔으면 true (토스트로 이유를 알린다) */
 function roomCapacityBlocked(r, draftMembers) {
   var ai = draftMembers ? (draftMembers || []).length : roomAiCount(r);
@@ -14029,7 +14023,9 @@ function bounceJoinFull(why) {
 async function enforceJoinCapacity(roomId, wasMember) {
   var r = null;
   state.rooms.forEach(function (x) { if (String(x.id) === String(roomId)) r = x; });
-  if (!r || wasMember) return false;
+  if (!r) return false;
+  /* 기존 멤버의 새로고침 재입장은 사람 정원에서 봐준다 — AI 자리는 다시 본다(외부 AI 가 돌아와 9명이 되는 경우) */
+  if (wasMember && !selfIsAI()) return false;
   await waitRoomRoster(roomId, 3500);
   var capS = await roomCapacityFromServer(roomId);
   var live = roomOccupancy(r);
@@ -14037,7 +14033,7 @@ async function enforceJoinCapacity(roomId, wasMember) {
   var people = Math.max(Number(capS && capS.people) || 0, live.people);
   var total = Math.max(Number(capS && capS.total) || 0, Math.max(live.total, ai + people));
   var overAI = selfIsAI() && ai > ROOM_AI_MAX;
-  var overAll = total > ROOM_PEOPLE_MAX;
+  var overAll = total > ROOM_PEOPLE_MAX && !wasMember;
   if (!overAI && !overAll) return false;
   var why = overAI ? "AI 자리가 가득 찼어요" : "방 정원(최대 " + ROOM_PEOPLE_MAX + "명)이 다 찼어요";
   await dbLeaveRoom(r);
