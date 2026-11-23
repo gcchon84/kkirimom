@@ -3457,7 +3457,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261124-0259-d81b4289";
+var APP_BUILD_VER = "20261124-0307-d1321a88";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -10958,8 +10958,12 @@ function rtTitleModerator(r, parts) {
     mod = seg.length >= 5 ? String(seg[3] || "") : "";
   }
   if (!mod || (parts || []).indexOf(mod) < 0) return "";
-  var sig = rtRolesSig(r, rtTitleAgenda(r, r.name), r.brand || "", mod);
-  if (!rtRolesFresh(r, sig)) return "";
+  /* 방 제목 역할이 지금 AI 를 모두 덮으면 그때 정한 사회자를 그대로 — 시트와 방이 같은 AI를 가리키게
+     (초대 카드로 일부만 들어와 sig 의 AI 목록이 달라져도 어긋나지 않게, 2026-11-24) */
+  if (!rtTitleRolesCover(r)) {
+    var sig = rtRolesSig(r, rtTitleAgenda(r, r.name), r.brand || "", mod);
+    if (!rtRolesFresh(r, sig)) return "";
+  }
   if (!r.dynamicRolesMod) r.dynamicRolesMod = mod;
   return mod;
 }
