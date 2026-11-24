@@ -3467,7 +3467,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261124-1041-abab2f97";
+var APP_BUILD_VER = "20261124-1045-24eb4911";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -12534,7 +12534,7 @@ function addMemberToRoom(id) {
   dbSetMember(r.id, id, true);
   /* 인사는 초대 창을 닫을 때 새로 남은 AI만 — 여기서는 바로 보내지 않는다(2026-11-22) */
   renderInviteAgents();
-  toast(a.name + " · 이 방에 추가했어요");
+  toast(roomAgentName(r, id) + " · 이 방에 추가했어요");
 }
 /* 직접 만들기 — 입력한 이름·역할·프롬프트의 낱말을 보고 엔진을 골라 준다(2026-11-22 지용 님 확정).
    · Claude : 공감·위로·감성·상담·마음·글쓰기·카피·문장·소통·수다·친구·정리·요약·기획
@@ -16468,7 +16468,8 @@ async function addExpert(exId) {
   renderInviteAgents();
   await dbUpsertAgent(r.id, id);
   /* 인사는 창을 닫을 때 — 새로 남은 AI만(2026-11-22) */
-  toast(ex.name + " · 이 방에 추가했어요");
+  /* 카드에서 본 역할 이름 그대로 알린다(2026-11-24) — 기본 이름('마케터')이 토스트에 튀어나오지 않게 */
+  toast((r ? roomAgentName(r, id) : ex.name) + " · 이 방에 추가했어요");
 }
 function removeExpert(id) {
   var r = activeRoom();
