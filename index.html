@@ -3465,7 +3465,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261124-0850-d9e3dcc4";
+var APP_BUILD_VER = "20261124-0910-c7a4378d";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -10544,7 +10544,9 @@ function rtBrandFromSheet() {
    · 안건·브랜드·멤버·사회자가 그대로면 다시 만들지 않는다(같은 방에서 토론을 반복해도 이름이 흔들리지 않게).
    ========================================================= */
 var RT_ROLES_ON = true;
-var RT_ROLES_VER = "v1";
+/* v2 (2026-11-24) — 결정·찬반 안건 역할 규칙이 바뀌어 예전(v1) 세트는 한 번 다시 세팅한다.
+   (제보 방 r_xmwtleqvbp04o 처럼 옛 규칙이 만든 '콘텐츠 마케팅·제품·운영 기획' 세트가 고정된 채 남지 않게) */
+var RT_ROLES_VER = "v2";
 /* 방 제목 기준 안건 (2026-11-24 지용 님)
    ─ 방을 처음 여는 순간부터 방 제목으로 역할을 정한다. 토론 시트의 안건이 비었거나
      방 제목과 같으면 같은 안건으로 보고, 이미 만들어 둔 역할을 그대로 다시 쓴다(재호출 없음). */
@@ -10770,8 +10772,12 @@ function rtRolesLocked(r) {
   if (!r || roleModeOf(r) === "manual") return false;
   var map = dynRolesOf(r);
   if (!map) return false;
-  for (var k in map) { if (String((map[k] && map[k].name) || "").trim()) return true; }
-  return false;
+  var any = false;
+  for (var k in map) { if (String((map[k] && map[k].name) || "").trim()) { any = true; break; } }
+  if (!any) return false;
+  /* 예전 규칙(v1)이 만든 세트는 한 번 새로 세팅한다 — 지금 규칙으로 확정된 세트만 고정. */
+  var seg = String(r.dynamicRolesSig || "").split("|");
+  return seg.length >= 5 && seg[0] === RT_ROLES_VER;
 }
 function rtFillMissingRoles(r, agenda, brand, ids, modId) {
   if (!r || !ids || !ids.length) return false;
@@ -10869,7 +10875,7 @@ function rtRememberTitleMod(r, ids, modId) {
   r.dynamicRoles[mod].mission = "converge";
   if (String(r.dynamicRolesMod || "") !== mod) {
     r.dynamicRolesMod = mod;
-    r.dynamicRolesSig = rtRolesSig(r, rtTitleAgenda(r, r.name || ""), r.brand || "", mod);
+    r.dynamicRolesSig = rtRolesSig(r, rtSeedAgenda(r), r.brand || "", mod);
     save();
     try { if (isRoomOwner(r)) dbSaveSettings(r); } catch (e) {}
   }
@@ -10890,7 +10896,7 @@ function rtEnsureTitleRoles(r) {
   var modId = String(r.dynamicRolesMod || "");
   if (ids.indexOf(modId) < 0) modId = rtAutoModerator(r, ids) || ids[0];
   /* 이미 방 제목으로 만든 역할이 있으면 그대로 — 같은 방을 다시 열 때 서버를 부르지 않는다 */
-  if (rtTitleRolesCover(r) || rtRolesFresh(r, rtRolesSig(r, rtTitleAgenda(r, r.name), r.brand || "", modId))) {
+  if (rtTitleRolesCover(r) || rtRolesFresh(r, rtRolesSig(r, rtSeedAgenda(r), r.brand || "", modId))) {
     try { rtRememberTitleMod(r, ids, modId); } catch (e0) {}   /* 토론 시트가 같은 AI를 사회자로 보여 주게 */
     return Promise.resolve({ applied: false, reused: true, roles: r.dynamicRoles });
   }
@@ -11014,7 +11020,7 @@ function rtAssignCardRole(r, id) {
   r.dynamicRoles = (r.dynamicRoles && typeof r.dynamicRoles === "object") ? r.dynamicRoles : {};
   if (r.dynamicRoles[id] && String(r.dynamicRoles[id].name || "").trim()) return true;   /* 이미 이름이 있으면 그대로 */
   r.dynamicRoles[id] = { name: x.name, role: x.role, desc: x.desc, mission: x.mission };
-  r.dynamicRolesSig = rtRolesSig(r, rtTitleAgenda(r, r.name || ""), r.brand || "", String(r.dynamicRolesMod || ""));
+  r.dynamicRolesSig = rtRolesSig(r, rtSeedAgenda(r), r.brand || "", String(r.dynamicRolesMod || ""));
   try { DYN_ROLE_KEEP[r.id] = { sig: r.dynamicRolesSig, map: r.dynamicRoles }; } catch (e) {}
   save();
   try { if (isRoomOwner(r)) dbSaveSettings(r); } catch (e2) {}
