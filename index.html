@@ -3109,8 +3109,8 @@ window.__KKIRI_BOOT = (function () {
         <div class="pick-row" id="rtTurns">
           <!-- 2026-11-23 지용 님 — 칩에는 숫자만(앞의 ‘최대 라운드’가 이미 말해 준다). 읽어 주는 이름은 aria-label 로 남긴다. -->
           <button type="button" class="pick" data-rounds="1" aria-pressed="false" aria-label="1라운드">1</button>
-          <button type="button" class="pick" data-rounds="2" aria-pressed="false" aria-label="2라운드">2</button>
-          <button type="button" class="pick" data-rounds="3" aria-pressed="true" aria-label="3라운드">3</button>
+          <button type="button" class="pick" data-rounds="2" aria-pressed="true" aria-label="2라운드">2</button>
+          <button type="button" class="pick" data-rounds="3" aria-pressed="false" aria-label="3라운드">3</button>
           <button type="button" class="pick" data-rounds="4" aria-pressed="false" aria-label="4라운드">4</button>
           <button type="button" class="pick" data-rounds="5" aria-pressed="false" aria-label="5라운드">5</button>
         </div>
@@ -3467,7 +3467,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261124-1448-d40449d7";
+var APP_BUILD_VER = "20261124-1503-f68dd8b9";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -10547,7 +10547,7 @@ function rtRoomPlan(r) {
 /* 토론 시작 시트의 라운드 칩 — AI 전원이 한 번씩 말하면 1라운드 */
 var RT_ROUNDS = [1, 2, 3, 4, 5];
 var RT_MAX_ROUNDS = 5;                   /* 2026-11-23 지용 님 — 라운드는 1~5까지만 */
-var RT_DEFAULT_ROUNDS = 3;
+var RT_DEFAULT_ROUNDS = 2;             /* 2026-11-24 지용 님 — 기본 2라운드(선택지 1~5는 그대로) */
 /* 사회자 선택 칩 — 이 방에서 지금 말할 수 있는 AI(끼리맘 AI + 내 AI) 전부
    rtModSel = 이 시트에서 방장이 실제로 누른 칩(없으면 자동 추천). 예전엔 자동 추천 칩도
    aria-pressed=true 로 그려서 ‘방장이 골랐다’와 구분이 안 됐다(2026-11-23). */
@@ -10683,6 +10683,7 @@ function openRoundtable(prefill) {
   if (!rtCanTalk(r)) { toast("AI가 2명 이상이면 AI 자동토론을 켤 수 있어요 · 내 AI는 방 설정에서 ‘AI로 표시’하면 함께 참여해요"); return; }
   $("rtAgenda").value = prefill != null ? prefill : (r.agenda || r.name || "");
   if ($("rtBrand")) $("rtBrand").value = String(r.brand || "");
+  rtSyncBrandPlaceholder();
   rtSetRounds(r.rounds || RT_DEFAULT_ROUNDS);
   rtModSel = (r.moderatorPicked && r.moderator) ? String(r.moderator) : "";   /* 방장이 예전에 직접 고른 사회자만 유지 */
   rtRenderMods(r);
@@ -10710,6 +10711,39 @@ function rtStart() {
   rtBeginWithBrief(r, brand, agenda, plan, rounds);
 }
 /* 브랜드·배경 한 줄 — 시트 입력을 방에 기억한다(다음 토론에 그대로 뜨고, 서버 프롬프트 맨 위로 간다) */
+/* 배경 설명 예시 — 방 주제에 맞는 조건 예시를 placeholder 로 보여 준다(2026-11-24 지용 님).
+   · 사용자가 이미 적은 값(r.brand·입력값)은 건드리지 않고 placeholder 만 바꾼다.
+   · 시트를 열 때와 토론 주제(#rtAgenda)를 고칠 때 함께 갱신한다. */
+var RT_BRAND_PH = {
+  trip:  "예: 7살 아이랑 자차로 1시간 이내, 실내 위주 · 식사 포함",
+  baby:  "예: 생후 5개월, 어제부터 미열, 모유 수유 중",
+  birth: "예: 39주차 초산모, 진통 간격 20분, 병원 차로 15분",
+  gift:  "예: 30대 후반 아내, 실용적 취향, 예산 20만 원대",
+  hire:  "예: 5인 팀, 온라인 쇼핑몰 운영, 월 인건비 한도 300만 원",
+  biz:   "예: 유아용품 브랜드, 2030 육아맘 타깃, 12월 연말 행사",
+  etc:   "예: 꼭 반영할 조건·예산·상황이 있으면 간단히 적어 주세요"
+};
+function rtBrandPlaceholder(r, agenda) {
+  var cat = String((r && ((r.settings && r.settings.category) || r.category)) || "");
+  var txt = String(agenda || "") + " " + String((r && (r.description || r.name)) || "");
+  if (/^pregnant$/.test(cat)) return RT_BRAND_PH.birth;
+  if (/^(newborn|feeding|health|gear|momtalk|mom_etc)$/.test(cat)) return RT_BRAND_PH.baby;
+  if (/^(trip|travel|daily)$/.test(cat)) return RT_BRAND_PH.trip;
+  if (/^counsel$/.test(cat)) return RT_BRAND_PH.gift;
+  if (/(진통|주차|출산|임신|산모|초산|경산|양수|이슬|자궁)/.test(txt)) return RT_BRAND_PH.birth;
+  if (/(여행|나들이|코스|당일치기|숙소|실내|행사\s*중심|맛집|데이트|갈\s*만한|체험|전시)/.test(txt)) return RT_BRAND_PH.trip;
+  if (/(열이|열나|체온|수면|수유|이유식|기저귀|신생아|개월|아기|육아|발달|예방접종)/.test(txt)) return RT_BRAND_PH.baby;
+  if (/(선물|생일|기념일|부부|가족|고민|관계|상담)/.test(txt)) return RT_BRAND_PH.gift;
+  if (/(채용|면접|뽑을|뽑아|이직|팀\s*인원|인건비|인사|온보딩)/.test(txt)) return RT_BRAND_PH.hire;
+  if (/(프로모션|마케팅|캠페인|브랜드|매출|판매|제품|출시|런칭|기획전|인플루언서|광고)/.test(txt)) return RT_BRAND_PH.biz;
+  return RT_BRAND_PH.etc;
+}
+function rtSyncBrandPlaceholder() {
+  var el = $("rtBrand");
+  if (!el) return;
+  var agEl = $("rtAgenda");
+  el.setAttribute("placeholder", rtBrandPlaceholder(activeRoom(), agEl ? String(agEl.value || "") : ""));
+}
 function rtBrandFromSheet() {
   var el = $("rtBrand");
   return el ? String(el.value || "").replace(/\s+/g, " ").trim().slice(0, 300) : "";
@@ -17684,6 +17718,8 @@ function wire() {
     roomForm.roleTimer = setTimeout(renderRfRoles, 240);
   });
   $("rfSubmit").addEventListener("click", submitRoomForm);
+  /* 토론 주제를 고쳐 쓰면 배경 설명 예시도 그 주제에 맞춰 바뀐다(입력값은 그대로). */
+  if ($("rtAgenda")) $("rtAgenda").addEventListener("input", rtSyncBrandPlaceholder);
   $("rfName").addEventListener("keydown", function (e) {
     if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); submitRoomForm(); }
   });
