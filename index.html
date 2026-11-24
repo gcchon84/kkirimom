@@ -3467,7 +3467,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261124-1252-9ed91a4e";
+var APP_BUILD_VER = "20261124-1318-c56c2738";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -16592,6 +16592,21 @@ function greetAgentsOnEntry(ids, room) {
       return (i < list.length - 1) ? sleep(500).then(function () { return ok; }) : ok;
     });
   });
+  /* 한 명이 조용히 빠지는 경우(상태 동기화 타이밍) — 인사가 없는 AI만 1.2초 뒤 한 번 더 시도한다.
+     실제 화면 검증(2026-11-24)에서 AI 4명 중 1명의 인사가 빠진 적이 있었다. */
+  chain = chain.then(function () {
+    var r2 = room || activeRoom();
+    if (!r2) return true;
+    var miss = list.filter(function (id) {
+      return !(r2.messages || []).some(function (m) { return m.who === id && m.kind === "greet"; });
+    });
+    if (!miss.length) return true;
+    return sleep(1200).then(function () {
+      var again = Promise.resolve(false);
+      miss.forEach(function (id) { again = again.then(function () { return greetAgentOnEntry(id, r2); }); });
+      return again;
+    });
+  });
   return chain;
 }
 /* 초대 창 한 번의 세션 — 연 순간의 멤버(base)와 닫는 순간의 멤버를 비교한다. */
@@ -16606,7 +16621,14 @@ function finishInviteSession() {
   if (!base) return;
   var r = activeRoom();
   if (!r) return;
-  var added = (r.members || []).filter(function (id) { return base.indexOf(id) < 0; });
+  /* 이번 창에서 새로 들어온 AI + 아직 인사하지 못한 AI — 클릭 순서·렌더 타이밍으로 한 명이
+     빠져도(2026-11-24 검증) 다음에 창을 닫을 때 인사를 받는다. 이미 인사한 AI는 다시 하지 않는다. */
+  var added = (r.members || []).filter(function (id) {
+    if (base.indexOf(id) < 0) return true;
+    var a = state.agents[id];
+    if (!a || a.type !== "expert") return false;
+    return !(r.messages || []).some(function (m) { return m.who === id && m.kind === "greet"; });
+  });
   if (!added.length) return;
   /* 여러 명을 한 번에 추가해도 인사가 겹치지 않게 순서대로 보낸다 */
   greetAgentsOnEntry(added, r);
