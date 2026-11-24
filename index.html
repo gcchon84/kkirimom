@@ -3465,7 +3465,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261124-0910-c7a4378d";
+var APP_BUILD_VER = "20261124-0916-9c85ffc7";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -11056,11 +11056,13 @@ function rtPrepareCardRoles(r) {
   var cur = RT_CARD[r.id];
   if (RT_CARD_READY[r.id] === key && cur && cur.key === key) return;   /* 이미 확정 — 그대로 그린다 */
   if (RT_CARD_WAIT[r.id]) return;                                       /* 지금 세팅 중 */
-  /* 방에 이미 확정된 역할이 있으면 로딩 없이 그것으로 */
+  /* 방에 이미 확정된 역할이 있으면 로딩 없이 그것으로 — 확정 이름 + 아직 안 들어온 카드의 키워드 세트를 합친다 */
   if (rtRolesLocked(r)) {
     var dm = rtCardMapFromDynamic(r);
     if (dm) {
-      RT_CARD[r.id] = { key: key, map: dm };
+      var merged = rtCardRolesBuild(r) || {};
+      Object.keys(dm).forEach(function (k) { merged[k] = dm[k]; });
+      RT_CARD[r.id] = { key: key, map: merged };
       RT_CARD_READY[r.id] = key;
       delete RT_CARD_PENDING[r.id];
       return;
