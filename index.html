@@ -3467,7 +3467,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261124-1230-86d58f5d";
+var APP_BUILD_VER = "20261124-1252-9ed91a4e";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -11139,14 +11139,18 @@ function rtCardMap(r) {
 function rtRolesOffTopic(roles, r) {
   var gi = rtRoleGroupIndex([rtTitleAgenda(r, r && r.name), (r && r.brand) || "", (r && r.name) || ""].join(" "));
   var g = DYN_ROLE_GROUPS[gi];
+  var inN = 0, offN = 0;
   for (var i = 0; i < (roles || []).length; i++) {
     var s = String((roles[i] && roles[i].name) || "") + " " + String((roles[i] && roles[i].role) || "");
-    if (!s.trim() || g.re.test(s)) continue;
+    if (!s.trim() || g.re.test(s)) { inN++; continue; }
     for (var j = 0; j < DYN_ROLE_GROUPS.length; j++) {
-      if (j !== gi && DYN_ROLE_GROUPS[j].re.test(s)) return true;
+      if (j !== gi && DYN_ROLE_GROUPS[j].re.test(s)) { offN++; break; }
     }
   }
-  return false;
+  /* 2026-11-24 — 이름 한두 개('예산·이벤트' 같은 일반 낱말)로 세트 전체를 버려 키워드 폴백으로
+     떨어지면, 카드와 서버 응답이 어긋나 사용자가 본 이름이 바뀐 것처럼 보였다.
+     이 방 주제에 맞는 이름이 **하나도 없고** 다른 주제 이름이 2개 이상일 때만 버린다. */
+  return inN === 0 && offN >= 2;
 }
 /* 이 방 카탈로그(초대 창에 뜨는 프리셋 AI)의 역할 — 방 제목 결로 고르고 이름이 겹치지 않게 한다 */
 function rtCardRolesBuild(r) {
