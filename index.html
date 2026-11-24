@@ -3098,10 +3098,11 @@ window.__KKIRI_BOOT = (function () {
     <div class="sheet-head"><h2 id="rtTitle">AI 자동토론</h2><button class="icon-btn" data-close aria-label="닫기">✕</button></div>
     <div class="sheet-body">
       <label class="field"><span>토론 주제</span><textarea id="rtAgenda" placeholder="방 이름(주제)이 그대로 들어가요 · 필요하면 더 좁혀 적어도 돼요" maxlength="300"></textarea></label>
-      <!-- 2026-11-23 — 브랜드·배경 사실. 비워 두면 AI가 브랜드 이름의 낱말로 업종을 추측한다(‘육오빠’ → 고기). -->
-      <label class="field"><span>브랜드·배경 <em class="rt-lbl-note">· 선택</em></span>
-        <input id="rtBrand" type="text" maxlength="200" placeholder="예: 유아·출산용품 브랜드 육오빠 · 타깃 0~3세 부모" autocomplete="off">
-        <em class="auto-hint">적어 둔 사실을 AI가 배경으로만 씁니다 · 비워 두면 사회자가 먼저 묻습니다</em>
+      <!-- 2026-11-24 지용 님 — '브랜드·배경'이 아니라 안건을 보완하는 '배경 설명(선택)'.
+           예시에 개인·사업 실정보를 넣지 않고, 상황을 설명하는 범용 예시만 둔다. -->
+      <label class="field"><span>배경 설명 <em class="rt-lbl-note">· 선택</em></span>
+        <input id="rtBrand" type="text" maxlength="200" placeholder="예: 생후 7개월, 밤중 수유 2번 · 낮잠은 30분씩 자요" autocomplete="off">
+        <em class="auto-hint">안건을 보완하는 배경만 적어 주세요 · 비워 두면 사회자가 먼저 묻습니다</em>
       </label>
       <div class="field"><span>최대 라운드<em class="rt-lbl-note">· 먼저 끝나면 덜 씀</em></span>
         <div class="pick-row" id="rtTurns">
@@ -3465,7 +3466,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261124-0916-9c85ffc7";
+var APP_BUILD_VER = "20261124-0920-10048bcf";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -8362,7 +8363,7 @@ function brandLeadBlock(r) {
   var brand = String((r && r.brand) || "").replace(/\s+/g, " ").trim();
   var facts = (r && r.brief && r.brief.facts) || [];
   var head = brand
-    ? "[브랜드·배경 사실 — 절대 기준]\n· " + brand + "\n· 위 사실이 이 토론의 유일한 배경이다. 브랜드 이름의 낱말을 다른 업종으로 해석하지 않는다(예: ‘육오빠’를 고기·축산으로 읽지 않는다). 사실에 없는 업종의 제품·선물세트·시식권을 예로 들지 않는다.\n"
+    ? "[브랜드·배경 사실 — 절대 기준]\n· " + brand + "\n· 위 사실이 이 토론의 유일한 배경이다. 브랜드 이름의 낱말을 다른 업종으로 해석하지 않는다(예: 이름에 ‘주방’이 있어도 요리·식품으로 읽지 않는다). 사실에 없는 업종의 제품·선물세트·시식권을 예로 들지 않는다.\n"
     : "[브랜드·배경 사실 — 아직 없음]\n· 방장이 어떤 제품·서비스를 파는지 아직 말하지 않았다. 브랜드 이름의 낱말로 업종을 추측하지 않는다.\n· 사회자라면 첫 발언에서 ‘어떤 제품·서비스를 파는 브랜드인지, 타깃·예산 범위가 있는지’를 반드시 묻는다.\n";
   if (!facts.length) return head;
   var lines = [];
