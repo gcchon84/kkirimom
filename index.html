@@ -3467,7 +3467,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261124-1503-f68dd8b9";
+var APP_BUILD_VER = "20261124-1509-2b30be0c";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -3954,7 +3954,10 @@ function normalizeRoom(r) {
   if (r.budget < 100) r.budget = 100;
   if (r.budget > 5000) r.budget = 5000;
   if (typeof r.maxTurns !== "number") r.maxTurns = 30;
-  if (typeof r.rounds !== "number") r.rounds = 3;   /* 기본 3라운드 */
+  /* 2026-11-24 지용 님 — 기본 2라운드. 예전 기본값 3이 그대로 저장된 방(방장이 직접 고른 적 없음)은
+     한 번 2로 옮긴다. 방장이 칩으로 고른 라운드(roundsPicked)는 그대로 둔다. */
+  if (typeof r.rounds !== "number") r.rounds = 2;
+  else if (r.rounds === 3 && !r.roundsPicked) r.rounds = 2;
   if (!Array.isArray(r.messages)) r.messages = [];
   /* 예전 DB·브라우저에 남은 mode(roundtable·free)는 더 이상 고르지 않는 값이라 통합 흐름으로 맞춘다. */
   r.mode = "mention";
@@ -10726,16 +10729,17 @@ var RT_BRAND_PH = {
 function rtBrandPlaceholder(r, agenda) {
   var cat = String((r && ((r.settings && r.settings.category) || r.category)) || "");
   var txt = String(agenda || "") + " " + String((r && (r.description || r.name)) || "");
-  if (/^pregnant$/.test(cat)) return RT_BRAND_PH.birth;
-  if (/^(newborn|feeding|health|gear|momtalk|mom_etc)$/.test(cat)) return RT_BRAND_PH.baby;
-  if (/^(trip|travel|daily)$/.test(cat)) return RT_BRAND_PH.trip;
-  if (/^counsel$/.test(cat)) return RT_BRAND_PH.gift;
+  /* 안건·방 제목의 말이 먼저 — 방 분류는 말이 하나도 안 걸릴 때만 쓴다(2026-11-24). */
   if (/(진통|주차|출산|임신|산모|초산|경산|양수|이슬|자궁)/.test(txt)) return RT_BRAND_PH.birth;
   if (/(여행|나들이|코스|당일치기|숙소|실내|행사\s*중심|맛집|데이트|갈\s*만한|체험|전시)/.test(txt)) return RT_BRAND_PH.trip;
   if (/(열이|열나|체온|수면|수유|이유식|기저귀|신생아|개월|아기|육아|발달|예방접종)/.test(txt)) return RT_BRAND_PH.baby;
   if (/(선물|생일|기념일|부부|가족|고민|관계|상담)/.test(txt)) return RT_BRAND_PH.gift;
   if (/(채용|면접|뽑을|뽑아|이직|팀\s*인원|인건비|인사|온보딩)/.test(txt)) return RT_BRAND_PH.hire;
   if (/(프로모션|마케팅|캠페인|브랜드|매출|판매|제품|출시|런칭|기획전|인플루언서|광고)/.test(txt)) return RT_BRAND_PH.biz;
+  if (/^pregnant$/.test(cat)) return RT_BRAND_PH.birth;
+  if (/^(newborn|feeding|health|gear|momtalk|mom_etc)$/.test(cat)) return RT_BRAND_PH.baby;
+  if (/^(trip|travel|daily)$/.test(cat)) return RT_BRAND_PH.trip;
+  if (/^counsel$/.test(cat)) return RT_BRAND_PH.gift;
   return RT_BRAND_PH.etc;
 }
 function rtSyncBrandPlaceholder() {
@@ -13273,7 +13277,8 @@ function dbApply(roomRows, agentRows, fresh) {
       maxTurns: typeof s.maxTurns === "number" ? s.maxTurns : (row.kind === "lounge" ? 0 : 10),
       /* 라운드 수도 서버 설정에서 되살린다 — 예전 행에는 없으니 직전 값 → 기본 3라운드 */
       rounds: (typeof s.rounds === "number" && s.rounds >= 1) ? clamp(Math.round(s.rounds), 1, RT_MAX_ROUNDS)
-            : (p && typeof p.rounds === "number") ? p.rounds : 3,
+            : (p && typeof p.rounds === "number") ? p.rounds : 2,
+      roundsPicked: s.roundsPicked ? 1 : 0,
       budget: typeof s.budget === "number" ? clamp(Math.round(s.budget), 100, 5000) : 200,
       /* 이 방의 사회자 — 서버 설정에서 되살린다(없으면 시작할 때 첫 AI가 사회자) */
       moderator: typeof s.moderator === "string" ? s.moderator : "",
@@ -13924,7 +13929,7 @@ async function dbCreateRoom(room, members) {
       is_public: !(V3.signedIn && V3.mode === "cloud"),
       owner_id: (V3.signedIn && V3.mode === "cloud" && V3.user) ? V3.user.id : null,
       host_name: nick(),
-      settings: { emoji: room.emoji, mode: "mention", roleMode: roleModeOf(room), roles: room.roles || {}, maxTurns: room.maxTurns, rounds: room.rounds, budget: room.budget, category: categoryKeyOf(room), tone: toneOf(room), aiPeople: room.aiPeople || [] }
+      settings: { emoji: room.emoji, mode: "mention", roleMode: roleModeOf(room), roles: room.roles || {}, maxTurns: room.maxTurns, rounds: room.rounds, roundsPicked: room.roundsPicked ? 1 : 0, budget: room.budget, category: categoryKeyOf(room), tone: toneOf(room), aiPeople: room.aiPeople || [] }
     };
     var res = await db.client.from("kkiri_rooms").insert(row);
     if (res.error) { dbToast(dbErrorText("방을 서버에 만들지 못했어요", res.error, "방을 만들 수 없어요 · 로그인 상태를 확인해 주세요")); return; }
@@ -13963,7 +13968,7 @@ async function dbUpdateRoom(r, members) {
       name: String(r.name).slice(0, 60),
       kind: r.kind === "chat" ? "lounge" : "project",
       description: String(r.agenda || "").slice(0, 600),
-      settings: { emoji: r.emoji, mode: "mention", roleMode: roleModeOf(r), roles: r.roles || {}, maxTurns: r.maxTurns, rounds: r.rounds, budget: r.budget, category: categoryKeyOf(r), tone: toneOf(r), aiPeople: r.aiPeople || [],
+      settings: { emoji: r.emoji, mode: "mention", roleMode: roleModeOf(r), roles: r.roles || {}, maxTurns: r.maxTurns, rounds: r.rounds, roundsPicked: r.roundsPicked ? 1 : 0, budget: r.budget, category: categoryKeyOf(r), tone: toneOf(r), aiPeople: r.aiPeople || [],
                   brand: String(r.brand || "").slice(0, 300),
                   dynamicRoles: (r.dynamicRoles && typeof r.dynamicRoles === "object") ? r.dynamicRoles : {},
                   dynamicRolesSig: String(r.dynamicRolesSig || "").slice(0, 300),
@@ -14201,7 +14206,7 @@ function dbSaveSettings(r) {
     name: String(r.name || "방").slice(0, 60),
     kind: r.kind === "chat" ? "lounge" : "project",
     description: String(r.agenda || "").slice(0, 600),
-    settings: { emoji: r.emoji, mode: "mention", roleMode: roleModeOf(r), roles: r.roles || {}, maxTurns: r.maxTurns, rounds: r.rounds, budget: r.budget, category: categoryKeyOf(r), tone: toneOf(r), aiPeople: r.aiPeople || [],
+    settings: { emoji: r.emoji, mode: "mention", roleMode: roleModeOf(r), roles: r.roles || {}, maxTurns: r.maxTurns, rounds: r.rounds, roundsPicked: r.roundsPicked ? 1 : 0, budget: r.budget, category: categoryKeyOf(r), tone: toneOf(r), aiPeople: r.aiPeople || [],
                 /* 2026-11-23 — 브랜드·배경 사실. 새로고침·재입장해도 유지되어 AI 프롬프트 맨 위로 간다. */
                 brand: String(r.brand || "").slice(0, 300),
                 /* 2026-11-23 — 안건 맞춤 역할(이 방 프리셋 AI의 이름·역할·설명·미션).
@@ -17604,6 +17609,14 @@ function wire() {
     var b = e.target.closest("[data-rounds]");
     if (!b) return;
     rtSetRounds(b.getAttribute("data-rounds"));
+    /* 방장이 직접 고른 라운드는 이 방에 기억한다 — 기본값 2로 되돌리지 않는다(2026-11-24). */
+    var rr = activeRoom();
+    if (rr) {
+      rr.rounds = clamp(Number(b.getAttribute("data-rounds")) || RT_DEFAULT_ROUNDS, 1, RT_MAX_ROUNDS);
+      rr.roundsPicked = 1;
+      save();
+      if (isRoomOwner(rr)) dbSaveSettings(rr);
+    }
     rtRefreshSummary();
   });
   var rtcap = $("rtCap");
