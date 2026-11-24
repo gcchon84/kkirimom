@@ -3466,7 +3466,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261124-0926-91c3746f";
+var APP_BUILD_VER = "20261124-0933-d78e8481";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -10576,63 +10576,91 @@ function rtAgendaKind(a) {
 }
 /* 서버를 못 쓸 때의 기본 세트 — 안건 낱말로 고르고, 모자라면 앞에서부터 돌려 쓴다. */
 var DYN_ROLE_GROUPS = [
+  /* 2026-11-24 지용 님 확정 — 이름은 **2~3글자 핵심어 + ' 코치'** 로 짧게 통일한다(예: 채용 코치, 실무 코치).
+     긴 이름('채용 기준 코치') 대신 세부는 부제(역할, 2~6자)와 한 줄 설명에 담는다. 팀장·매니저 같은 다른 직책 금지. */
   { re: /채용|신입|인사|면접|뽑|온보딩|직원|팀장|인력|구인|조직/, roles: [
-    ["채용 기준", "채용 기준", "무엇을 보고 뽑을지 기준과 면접 질문을 정한다.", "diverge"],
-    ["실무 팀장", "현장 역량", "실제 업무를 맡겼을 때 필요한 역량과 성장 속도를 본다.", "diverge"],
+    ["채용 코치", "채용 기준", "무엇을 보고 뽑을지 기준과 면접 질문을 정한다.", "diverge"],
+    ["실무 코치", "현장 역량", "실제 업무를 맡겼을 때 필요한 역량과 성장 속도를 본다.", "diverge"],
     ["온보딩 코치", "교육·적응", "들어온 뒤 3개월 교육과 적응 계획을 짠다.", "build"],
-    ["비용·리스크", "비용 검증", "채용 비용과 인건비, 되돌리기 어려운 위험을 짚는다.", "risk"],
-    ["조직 문화", "문화 적합", "기존 팀과 부딪히지 않을지, 어떤 성향이 맞는지 본다.", "target"]
+    ["비용 코치", "비용·리스크", "채용 비용과 인건비, 되돌리기 어려운 위험을 짚는다.", "risk"],
+    ["조직 코치", "조직 문화", "기존 팀과 부딪히지 않을지, 어떤 성향이 맞는지 본다.", "target"]
   ] },
   { re: /마케팅|프로모션|캠페인|행사|할인|블프|블랙프라이데이|브랜딩|광고|SNS|인플루언서|매출|판매|홍보|기획전/, roles: [
-    ["캠페인 기획", "캠페인 기획", "캠페인 콘셉트·구성·일정을 하나의 실행안으로 짠다.", "diverge"],
-    ["타깃 고객", "타깃 고객", "고객이 실제로 반응할지, 무엇이 걸릴지를 고객 말로 짚는다.", "target"],
-    ["실행·채널", "실행·채널", "어디에 어떤 순서로 내보낼지 채널과 준비물을 정한다.", "diverge"],
-    ["성과 검증", "성과 검증", "무엇을 성과로 볼지 기준을 세우고 확인할 것을 짚는다.", "risk"],
-    ["예산 관리", "예산·기간", "예산과 기간 안에서 가능한 범위로 줄이고 대안을 준다.", "build"]
+    ["기획 코치", "캠페인 기획", "캠페인 콘셉트·구성·일정을 하나의 실행안으로 짠다.", "diverge"],
+    ["타깃 코치", "타깃 고객", "고객이 실제로 반응할지, 무엇이 걸릴지를 고객 말로 짚는다.", "target"],
+    ["채널 코치", "실행·채널", "어디에 어떤 순서로 내보낼지 채널과 준비물을 정한다.", "diverge"],
+    ["성과 코치", "성과 검증", "무엇을 성과로 볼지 기준을 세우고 확인할 것을 짚는다.", "risk"],
+    ["예산 코치", "예산·기간", "예산과 기간 안에서 가능한 범위로 줄이고 대안을 준다.", "build"]
   ] },
   { re: /아이|육아|수면|잠|수유|이유식|기저귀|신생아|엄마|아빠|가족/, roles: [
-    ["수면 루틴", "수면·루틴", "아이의 잠드는 순서와 하루 리듬을 구체적으로 짠다.", "diverge"],
-    ["아이 기질", "기질·감정", "아이 성향과 그날 컨디션을 보고 무엇이 맞을지 살린다.", "target"],
-    ["현실 육아", "현실 육아", "엄마·아빠가 실제로 해낼 수 있는 범위로 줄인다.", "build"],
-    ["안전 체크", "안전·건강", "위험한 방법과 병원에 물어볼 것을 짚는다.", "risk"],
-    ["가족 역할", "가족 분담", "누가 언제 무엇을 맡을지 역할을 나눈다.", "diverge"]
+    ["수면 코치", "수면 루틴", "아이의 잠드는 순서와 하루 리듬을 구체적으로 짠다.", "diverge"],
+    ["기질 코치", "아이 기질", "아이 성향과 그날 컨디션을 보고 무엇이 맞을지 살린다.", "target"],
+    ["육아 코치", "현실 육아", "엄마·아빠가 실제로 해낼 수 있는 범위로 줄인다.", "build"],
+    ["안전 코치", "안전·건강", "위험한 방법과 병원에 물어볼 것을 짚는다.", "risk"],
+    ["가족 코치", "역할 분담", "누가 언제 무엇을 맡을지 역할을 나눈다.", "diverge"]
   ] },
   { re: /건강|병원|증상|열|기침|아파|아픈|치료|검진|약/, roles: [
-    ["증상 정리", "증상 관찰", "언제부터 어떤 증상인지 시간순으로 정리한다.", "diverge"],
-    ["병원 확인", "병원 확인", "어느 진료과에 언제 가야 하는지 확인할 것을 짚는다.", "risk"],
-    ["집에서 돌봄", "집 돌봄", "오늘 집에서 해 볼 수 있는 돌봄을 구체적으로 짠다.", "build"],
-    ["안전 신호", "위험 신호", "바로 응급실로 가야 하는 신호를 짚는다.", "risk"],
-    ["가족 컨디션", "가족 컨디션", "돌보는 사람의 체력과 역할 분담을 본다.", "target"]
+    ["증상 코치", "증상 관찰", "언제부터 어떤 증상인지 시간순으로 정리한다.", "diverge"],
+    ["병원 코치", "진료과·시기", "어느 진료과에 언제 가야 하는지 확인할 것을 짚는다.", "risk"],
+    ["돌봄 코치", "집 돌봄", "오늘 집에서 해 볼 수 있는 돌봄을 구체적으로 짠다.", "build"],
+    ["응급 코치", "위험 신호", "바로 응급실로 가야 하는 신호를 짚는다.", "risk"],
+    ["컨디션 코치", "돌보는 사람", "돌보는 사람의 체력과 역할 분담을 본다.", "target"]
   ] },
   { re: /여행|나들이|숙소|호텔|항공|코스|제주|부산|해외|캠핑|당일치기/, roles: [
-    ["동선 설계", "일정·동선", "이동 시간을 계산해 하루 동선을 짠다.", "diverge"],
-    ["예산 맞추기", "가성비·비용", "교통·숙소·식비를 숫자로 나눠 총액을 맞춘다.", "build"],
-    ["현지 감각", "현지·분위기", "그 동네 분위기와 실제로 가는 곳을 골라 준다.", "target"],
-    ["준비물", "준비물·예약", "예약 마감과 챙길 것을 놓치지 않게 정리한다.", "diverge"],
-    ["변수 체크", "날씨·대기", "비·주차·대기처럼 일정을 망치는 변수를 먼저 본다.", "risk"]
+    ["동선 코치", "일정·동선", "이동 시간을 계산해 하루 동선을 짠다.", "diverge"],
+    ["예산 코치", "가성비·비용", "교통·숙소·식비를 숫자로 나눠 총액을 맞춘다.", "build"],
+    ["현지 코치", "현지·분위기", "그 동네 분위기와 실제로 가는 곳을 골라 준다.", "target"],
+    ["준비물 코치", "예약·준비", "예약 마감과 챙길 것을 놓치지 않게 정리한다.", "diverge"],
+    ["변수 코치", "날씨·대기", "비·주차·대기처럼 일정을 망치는 변수를 먼저 본다.", "risk"]
   ] },
   { re: /제품|구매|가성비|가격|비교|용품|사야|살까|추천|리뷰/, roles: [
-    ["제품 비교", "제품 비교", "같은 값이면 구성이 나은 쪽을 골라 비교한다.", "diverge"],
-    ["가격 계산", "가격·구성", "가격·중량·할인을 숫자로 놓고 실제 이득을 계산한다.", "build"],
-    ["실사용 후기", "실사용 관점", "실제로 써 봤을 때 불편한 점을 짚는다.", "target"],
-    ["안전·인증", "안전·인증", "인증·재질·반품 조건에서 걸릴 것을 확인한다.", "risk"],
-    ["대안 찾기", "대안 제시", "더 싸거나 더 나은 대안을 한 가지 제안한다.", "diverge"]
+    ["비교 코치", "구성 비교", "같은 값이면 구성이 나은 쪽을 골라 비교한다.", "diverge"],
+    ["가격 코치", "가격·구성", "가격·중량·할인을 숫자로 놓고 실제 이득을 계산한다.", "build"],
+    ["후기 코치", "실사용 관점", "실제로 써 봤을 때 불편한 점을 짚는다.", "target"],
+    ["인증 코치", "안전·인증", "인증·재질·반품 조건에서 걸릴 것을 확인한다.", "risk"],
+    ["대안 코치", "다른 선택", "더 싸거나 더 나은 대안을 한 가지 제안한다.", "diverge"]
   ] },
   { re: /공부|학습|진로|시험|교육|학원|독서|영어/, roles: [
-    ["목표 설정", "목표 설정", "무엇을 어느 수준까지 할지 목표를 숫자로 정한다.", "diverge"],
-    ["학습 루틴", "학습 루틴", "매일 할 수 있는 공부 순서와 시간을 짠다.", "diverge"],
-    ["진로 탐색", "진로·방향", "배운 것이 어디에 쓰이는지 방향을 짚는다.", "target"],
-    ["멘탈 관리", "멘탈·습관", "지치지 않게 하는 작은 습관을 정한다.", "build"],
-    ["점검 기준", "점검·기록", "잘 되고 있는지 무엇으로 확인할지 정한다.", "risk"]
+    ["목표 코치", "목표·수준", "무엇을 어느 수준까지 할지 목표를 숫자로 정한다.", "diverge"],
+    ["학습 코치", "공부 순서", "매일 할 수 있는 공부 순서와 시간을 짠다.", "diverge"],
+    ["진로 코치", "진로·방향", "배운 것이 어디에 쓰이는지 방향을 짚는다.", "target"],
+    ["멘탈 코치", "습관·체력", "지치지 않게 하는 작은 습관을 정한다.", "build"],
+    ["점검 코치", "점검·기록", "잘 되고 있는지 무엇으로 확인할지 정한다.", "risk"]
   ] },
   { re: /관계|부부|연애|친구|갈등|고민|속마음|상담|이혼|가족/, roles: [
-    ["마음 공감", "마음·경청", "상대의 감정을 먼저 읽고 인정해 준다.", "target"],
-    ["대화 제안", "대화 방법", "지금 해 볼 수 있는 말과 타이밍을 짠다.", "diverge"],
-    ["상대 입장", "상대 시선", "상대가 어떻게 들을지 바꿔 말해 본다.", "build"],
-    ["작은 실천", "작은 실천", "이번 주에 해 볼 한 가지를 정한다.", "diverge"],
-    ["주의할 점", "주의할 점", "관계를 더 상하게 할 말·행동을 짚는다.", "risk"]
+    ["공감 코치", "마음·경청", "상대의 감정을 먼저 읽고 인정해 준다.", "target"],
+    ["대화 코치", "말·타이밍", "지금 해 볼 수 있는 말과 타이밍을 짠다.", "diverge"],
+    ["입장 코치", "상대 시선", "상대가 어떻게 들을지 바꿔 말해 본다.", "build"],
+    ["실천 코치", "이번 주 행동", "이번 주에 해 볼 한 가지를 정한다.", "diverge"],
+    ["주의 코치", "조심할 말", "관계를 더 상하게 할 말·행동을 짚는다.", "risk"]
   ] }
 ];
+/* 역할 이름 정리 — 다른 직책(팀장·매니저·전문가…)은 떼고 **2~3글자 핵심어 + ' 코치'** 로 통일한다(2026-11-24 지용 님 확정). */
+function rtTidyRoleName(name, role) {
+  var raw = String(name || "").replace(/\s+/g, " ").trim();
+  var core = raw.replace(/\s*(팀장|매니저|담당자|전문가|컨설턴트|실장|소장|리드|어드바이저|담당|코치)$/g, "").trim();
+  if (!core) core = String(role || "").replace(/\s*코치$/, "").trim();
+  /* 긴 이름은 핵심 1단어만 — '채용 기준' → '채용', '비용·리스크' → '비용' */
+  var first = core.split(/\s+/)[0].split(/[·,/]/)[0].trim();
+  if (first.length >= 2) core = first;
+  if (core.length > 3) core = core.slice(0, 3);
+  if (core.length < 2) return raw.slice(0, 14);
+  return (core + " 코치").slice(0, 14);
+}
+/* 카드 부제 — 비었거나 이름과 같으면 이름에서 '코치'를 뺀 짧은 말로 채운다(부제 누락 방지). */
+function rtRoleSub(name, role) {
+  var nm = String(name || "").trim();
+  var rl = String(role || "").trim();
+  if (!rl || rl === nm) rl = nm.replace(/\s*코치$/, "").trim();
+  if (!rl) rl = nm;
+  return rl.slice(0, 12);
+}
+/* 카탈로그 AI가 키워드 세트 인원보다 많을 때 쓰는 여분 코치 이름(2026-11-24) */
+var DYN_ROLE_EXTRA = ["검증", "정리", "비교", "공감", "실행", "기록"];
+function rtCoachDedupe(name, n) {
+  var core = String(name || "").replace(/\s*코치$/, "").trim();
+  return (core + n + " 코치").slice(0, 14);
+}
 function rtPresetIdsForRoles(r) {
   return (((r && r.members) || [])).filter(function (id) {
     var a = state.agents[id];
@@ -10662,14 +10690,22 @@ function rtLocalRoleSet(agenda, brand, ids, r, modId) {
   var txt = [agenda, brand, (r && r.name) || ""].join(" ");
   var g = DYN_ROLE_GROUPS[rtRoleGroupIndex(txt)];
   var out = [];
+  var usedNames = {};
   ids.forEach(function (id, i) {
     var x = g.roles[i % g.roles.length];
-    out.push({ id: id, name: x[0], role: x[1], desc: x[2], mission: x[3] });
+    if (i >= g.roles.length) {
+      var ex = DYN_ROLE_EXTRA[(i - g.roles.length) % DYN_ROLE_EXTRA.length];
+      x = [ex + " 코치", ex, "이번 안건에서 " + ex + " 관점을 맡는다.", "build"];
+    }
+    var nm = String(x[0] || "").trim(), k = nm.toLowerCase(), n = 2;
+    while (usedNames[k] && n < 6) { nm = rtCoachDedupe(x[0], n); k = nm.toLowerCase(); n++; }
+    usedNames[k] = 1;
+    out.push({ id: id, name: nm, role: x[1], desc: x[2], mission: x[3] });
   });
   var mi = ids.indexOf(modId);
   if (mi > -1) {
     /* 사회자에는 중립 역할을 주고, 사회자가 받을 뻔한 세트의 역할은 첫 자리로 옮겨 세트를 통째로 살린다. */
-    var neutral = { name: "진행·조율", role: "진행·조율", desc: "발언 순서를 잡고 쟁점을 정리해 하나의 결론으로 모은다.", mission: "converge" };
+    var neutral = { name: "진행 코치", role: "진행·조율", desc: "발언 순서를 잡고 쟁점을 정리해 하나의 결론으로 모은다.", mission: "converge" };
     if (mi > 0) {
       var keep = out[mi];
       out[mi] = { id: out[mi].id, name: neutral.name, role: neutral.role, desc: neutral.desc, mission: neutral.mission };
@@ -10699,9 +10735,9 @@ async function rtFetchRoles(r, agenda, brand, modId, ids, ms, defs) {
     var byId = {};
     data.roles.forEach(function (x) {
       if (!x || ids.indexOf(x.id) < 0) return;
-      var name = String(x.name || "").trim();
-      var role = String(x.role || "").trim();
-      if (name.length < 2 || role.length < 2) return;
+      var name = rtTidyRoleName(x.name, x.role);
+      var role = rtRoleSub(name, x.role);
+      if (name.length < 2) return;
       byId[x.id] = { id: x.id, name: name.slice(0, 14), role: role.slice(0, 12), desc: String(x.desc || "").slice(0, 90), mission: String(x.mission || "") };
     });
     var out = ids.map(function (id) { return byId[id]; }).filter(Boolean);
@@ -10730,15 +10766,15 @@ function rtApplyRoles(r, roles, sig, modId, idsIn) {
   ids.forEach(function (id, i) {
     var x = roles[i];
     if (!x) return;
-    var name = String(x.name || "").replace(/[@#]/g, "").replace(/\s+/g, " ").trim().slice(0, 12);
-    if (name.length < 2) name = String(x.role || "").slice(0, 12);
+    var name = rtTidyRoleName(String(x.name || "").replace(/[@#]/g, ""), x.role).slice(0, 14);
+    if (name.length < 2) name = rtTidyRoleName(x.role, x.name).slice(0, 14);
     if (!name) return;
     var key = name.toLowerCase(), n = 2, base = name;
-    while (used[key] && n < 6) { name = (base + " " + n).slice(0, 12); key = name.toLowerCase(); n++; }
+    while (used[key] && n < 6) { name = rtCoachDedupe(name, n); key = name.toLowerCase(); n++; }
     used[key] = 1;
     map[id] = {
       name: name,
-      role: String(x.role || name).trim().slice(0, 12),
+      role: rtRoleSub(name, x.role),
       desc: String(x.desc || "").trim().slice(0, 90),
       mission: String(x.mission || "")
     };
@@ -10748,7 +10784,7 @@ function rtApplyRoles(r, roles, sig, modId, idsIn) {
   if (modKey) {
     var m = map[modKey];
     if (/(비판|검증|리스크|허점|반대)/.test(m.name + " " + m.role)) {
-      m.name = "진행·조율";
+      m.name = "진행 코치";
       m.role = "진행·조율";
       m.desc = m.desc || "발언 순서를 잡고 쟁점을 정리해 하나의 결론으로 모은다.";
     }
@@ -10804,10 +10840,10 @@ function rtFillMissingRoles(r, agenda, brand, ids, modId) {
     if (!x) return;
     var name = String(x.name || "").trim().slice(0, 12);
     if (!name) return;
-    var key = name.toLowerCase(), n = 2, b = name;
-    while (used[key] && n < 6) { name = (b + " " + n).slice(0, 12); key = name.toLowerCase(); n++; }
+    var key = name.toLowerCase(), n = 2;
+    while (used[key] && n < 6) { name = rtCoachDedupe(name, n); key = name.toLowerCase(); n++; }
     used[key] = 1;
-    r.dynamicRoles[id] = { name: name, role: String(x.role || name).slice(0, 12),
+    r.dynamicRoles[id] = { name: name, role: rtRoleSub(name, x.role),
       desc: String(x.desc || "").slice(0, 90), mission: String(x.mission || "") };
     changed = true;
   });
@@ -10982,13 +11018,13 @@ function rtCardRolesBuild(r) {
   var byTitle = rtLocalRoleSet(rtTitleAgenda(r, r.name || ""), r.brand || "", ids, r, "");
   var map = {}, used = {};
   byTitle.forEach(function (x) {
-    var name = String(x.name || "").trim().slice(0, 12) || String(x.role || "").slice(0, 12);
+    var name = rtTidyRoleName(x.name, x.role).slice(0, 14);
     if (!name) return;
-    var key = name.toLowerCase(), n = 2, base = name;
-    while (used[key] && n < 6) { name = (base + " " + n).slice(0, 12); key = name.toLowerCase(); n++; }
+    var key = name.toLowerCase(), n = 2;
+    while (used[key] && n < 6) { name = rtCoachDedupe(name, n); key = name.toLowerCase(); n++; }
     used[key] = 1;
     map[x.id] = {
-      name: name, role: String(x.role || name).trim().slice(0, 12),
+      name: name, role: rtRoleSub(name, x.role),
       desc: String(x.desc || "").trim().slice(0, 90), mission: String(x.mission || "")
     };
   });
@@ -11085,12 +11121,12 @@ function rtPrepareCardRoles(r) {
     if (roles && roles.length && !rtRolesOffTopic(roles, r)) {
       var sb = {}, used = {};
       roles.forEach(function (x) {
-        var name = String(x.name || "").trim().slice(0, 12);
+        var name = rtTidyRoleName(x.name, x.role).slice(0, 14);
         if (!name) return;
-        var k = name.toLowerCase(), n = 2, b = name;
-        while (used[k] && n < 6) { name = (b + " " + n).slice(0, 12); k = name.toLowerCase(); n++; }
+        var k = name.toLowerCase(), n = 2;
+        while (used[k] && n < 6) { name = rtCoachDedupe(name, n); k = name.toLowerCase(); n++; }
         used[k] = 1;
-        sb[x.id] = { name: name, role: String(x.role || name).trim().slice(0, 12),
+        sb[x.id] = { name: name, role: rtRoleSub(name, x.role),
           desc: String(x.desc || "").trim().slice(0, 90), mission: String(x.mission || "") };
       });
       if (Object.keys(sb).length) map = sb;
@@ -14726,10 +14762,10 @@ function renderExpertPicker() {
        아바타 그림은 원래 프리셋 id·이름으로 찾는다 — 이름이 바뀌어도 캐릭터가 달라지지 않게. */
     var dr = draft ? null : rtCardRoleOf(r, ex);
     var nm = (dr && String(dr.name || "").trim()) || ex.name;
-    var rl = (dr && String(dr.role || "").trim()) || ex.role;
+    /* 부제는 카드마다 빠짐없이 — 비었거나 이름과 같으면 짧은 영역명으로 채운다(2026-11-24) */
+    var rl = rtRoleSub(nm, (dr && dr.role) || ex.role);
     var ds = (dr && String(dr.desc || "").trim()) || "";
-    if (String(rl) === String(nm)) rl = "";   /* 이름과 같은 역할 라벨은 두 번 쓰지 않는다 */
-    if (dr) shownNow[ex.id] = { name: nm, role: rl || nm, desc: dr.desc || ds, mission: dr.mission || "" };
+    if (dr) shownNow[ex.id] = { name: nm, role: rl, desc: dr.desc || ds, mission: dr.mission || "" };
     h += '<button type="button" class="expert-card' + (added ? " added" : "") + (ownerNow ? "" : " locked") + '" data-expert="' + esc(ex.id) + '"' + (added ? ' aria-disabled="true"' : "") + '>' +
       '<span class="e-top"><span class="e-ava' + (avIconName(ex.id, ex.name) ? " char" : "") + '" aria-hidden="true">' + expertIcoHtml(ex.id, ex.name, ex.avatar, "", "spark") + '</span>' +
       '<span class="e-name"><span class="e-title"><b>' + esc(nm) + '</b>' + engTag(ex.config) + '</span>' + (rl ? '<small>' + esc(rl) + '</small>' : '') + '</span></span>' +
