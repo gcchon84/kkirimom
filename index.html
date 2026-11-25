@@ -3491,7 +3491,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261125-2349-f3cccd43";
+var APP_BUILD_VER = "20261125-2355-252ee050";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -5696,6 +5696,9 @@ function syncCardWait() {
 function cardWaitPaint() {
   syncCardWait();
   updateMeters();                  /* 상태바는 이 방의 대기일 때만 ‘토론 요약 중’ */
+  /* 안내 줄이 생기면 채팅 높이가 조금 줄어 마지막 말풍선이 잘려 보인다 — 맨 아래를 보고 있던
+     사람에게는 마지막 줄을 그대로 보여 준다(위로 올려 읽는 중이면 화면을 건드리지 않는다). */
+  if ($("timeline")) scrollBottom(false);
 }
 
 function renderTimeline(autoScroll) {
