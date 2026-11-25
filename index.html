@@ -2974,7 +2974,8 @@ window.__KKIRI_BOOT = (function () {
           <div class="pick-row" id="invQuick"></div>
         </div>
 
-        <details class="spec" id="customWrap">
+        <!-- ‘+ 직접 만들기’ — 2026-11-25 화면에서 감춤(SHOW_CUSTOM_BUILD=false). 폼·로직은 그대로 보존 -->
+        <details class="spec" id="customWrap" hidden>
           <summary>+ 직접 만들기</summary>
           <div class="spec-body">
             <div class="field-row">
@@ -3467,7 +3468,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261125-2151-664dcfcf";
+var APP_BUILD_VER = "20261125-2213-e21bdb86";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -3496,6 +3497,10 @@ var SHOW_OPEN_CHAT = false;
 /* 2026-11-23 지용 님 — 방 대화·토론요약으로 보고서(PDF)·발표자료(PPTX)·표(XLSX)를 원할 때만 만든다.
    끼리맘 빌드(work/kkirimom/build.py)는 이 값을 false 로 바꿔 이 UI 를 감춘다. */
 var DOC_MAKE_ENABLED = false;
+/* 2026-11-25 지용 님 확정("일단 빼자 그럼 1번") — 초대 창의 ‘+ 직접 만들기’(커스텀 끼리맘 AI 폼)를 화면에서 감춘다.
+   폼·엔진 자동 선택·저장·초대 로직은 하나도 지우지 않았다 — 이 값만 true 로 바꾸면 그대로 다시 보인다.
+   이미 만들어 둔 커스텀 AI 는 ‘이미 만든 AI 바로 추가’·내 AI 탭·방 안 말풍선에서 그대로 동작한다. */
+var SHOW_CUSTOM_BUILD = false;
 var AUTH_UI_ENABLED = !GUEST_ONLY_MODE;   /* 로그인·회원 UI 표시 여부 — GUEST_ONLY_MODE 의 반대값(읽기용) */
 if (GUEST_ONLY_MODE) document.documentElement.classList.add("fl-guest");
 
@@ -14865,7 +14870,7 @@ function renderExpertPicker() {
     grid.innerHTML = '<div class="expert-setup"><i aria-hidden="true"></i><b>맞춤 AI 팀 세팅 중…</b>'
       + '<span>방 안건에 맞춰 역할을 정하고 있어요 · 잠시만요</span></div>';
     delete RT_SHOWN[r.id];
-    var cwP = $("customWrap"); if (cwP) { cwP.hidden = !ownerNow; }
+    var cwP = $("customWrap"); if (cwP) { cwP.hidden = !customBuildShown(ownerNow); }
     renderInviteBalance();
     var noteP = $("expertNote"); if (noteP) noteP.innerHTML = "";
     renderCustomTarget();
@@ -14899,9 +14904,10 @@ function renderExpertPicker() {
   grid.innerHTML = h;
   /* 지금 그려진 카드의 이름을 기억해 둔다 — 누른 카드의 이름 그대로 방에 들어가게 */
   if (r) RT_SHOWN[r.id] = shownNow;
-  /* 방장이 아니면 ‘직접 만들기(끼리맘 AI)’는 잠근다 — 내 AI 탭에서 내 키·웹훅 AI를 넣는 길은 그대로 */
+  /* ‘+ 직접 만들기(끼리맘 AI)’ 노출 — 2026-11-25 감춤(SHOW_CUSTOM_BUILD) · 방장이 아니어도 원래 잠겨 있었다.
+     내 AI 탭에서 내 키·웹훅 AI를 넣는 길은 그대로 */
   var cw = $("customWrap");
-  if (cw) { cw.hidden = !ownerNow; }
+  if (cw) { cw.hidden = !customBuildShown(ownerNow); }
   renderInviteBalance();
   var note = $("expertNote");
   if (note) {
@@ -14916,6 +14922,9 @@ function renderExpertPicker() {
   }
   renderCustomTarget();
 }
+/* ‘+ 직접 만들기’ 폼을 화면에 보일지 — 2026-11-25 지용 님 확정으로 감춘다(SHOW_CUSTOM_BUILD=false).
+   폼을 다시 켜려면 위 스위치만 true 로. 폼·저장·초대 로직은 손대지 않았다. */
+function customBuildShown(isOwner) { return !!SHOW_CUSTOM_BUILD && !!isOwner; }
 /* 직접 만들기 — 이름·역할·성격을 적는 동안 붙을 엔진을 미리 보여 준다 */
 function wireCustomEngineHint() {
   ["invName", "invRole", "invPrompt"].forEach(function (id) {
