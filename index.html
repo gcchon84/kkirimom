@@ -3467,7 +3467,7 @@ window.__KKIRI_BOOT = (function () {
    같은 값을 version.json 의 v 로 올린다. 바로가기 앱이 백그라운드에서
    돌아올 때 version.json 과 이 값을 비교해 새 배포가 있으면 새로 연다.
    ========================================================= */
-var APP_BUILD_VER = "20261124-1521-e9f9dac4";
+var APP_BUILD_VER = "20261125-2029-82160d5f";
 
 /* =========================================================
    무제한 무료 런치 스위치 (2026-11-22)
@@ -4384,6 +4384,7 @@ function dynRolesOf(r) {
   return map || null;
 }
 function dynRoleOf(r, id) {
+  if (!RT_ROLES_ON) return null;   /* 역할 제거(2026-11-25) — 화면 이름은 기본 AI 이름 그대로 */
   if (!r || !id) return null;
   var map = dynRolesOf(r);
   var d = map && map[id];
@@ -4460,14 +4461,14 @@ function roleChip(r, id) {
 /* 프롬프트에 넣는 역할 지시문 — @멘션도 라운드테이블도 같은 역할로 답한다. */
 function roleDirective(r, agent) {
   if (!r || !agent) return "";
+  /* 2026-11-25 — 안건 맞춤 역할 제거로 자동 역할 지시문을 쓰지 않는다. 사용자가 직접 정한 역할(수동)만 그대로. */
+  if (roleModeOf(r) !== "manual") return "";
   /* 직접 만든 AI·내 AI는 사용자가 쓴 역할·성격을 그대로 쓴다(방 주제 역할을 덧씌우지 않는다) */
   if (!isPresetExpertAgent(agent)) return "";
   var ro = roleOf(r, agent.id);
   if (!ro) return "";
-  var d = dynRoleOf(r, agent.id);
   return "\n이 방에서 맡은 역할: " + ro.label + " — " + ro.focus + ". " + roleContext(r) +
-    " 맥락에서 이 역할로만 발언하고, 다른 역할의 일을 대신하지 않는다." +
-    (d && d.name ? " 이 방에서 네 이름은 ‘" + d.name + "’이다." : "");
+    " 맥락에서 이 역할로만 발언하고, 다른 역할의 일을 대신하지 않는다.";
 }
 
 /* 2026-11-22 지용 님 — 자기 역할 밖의 말을 하는 문제(마음 공감맘이 소아과 진단, 육아템 가성비가 위로).
@@ -4494,6 +4495,8 @@ function agentRoleText(r, agent) {
   return parts.join(" ").trim();
 }
 function roleBoundBlock(r, agent) {
+  /* 2026-11-25 — 역할 경계로 AI를 가두지 않는다. 서로 다른 각도는 '겹치기 금지' 규칙이 만든다. */
+  if (!RT_ROLES_ON) return "";
   var txt = agentRoleText(r, agent);
   var bound = roleBoundLine(txt) || roleBoundLine(agent && agent.prompt);
   /* 2026-11-23 — 이번 회의 미션이 있으면 역할 경계보다 미션이 우선한다(비판가가 발산 미션을 받을 때 깎기만 하던 문제). */
@@ -6661,16 +6664,19 @@ function rtMissionScore(r, step, key) {
   if (key === "build") sc += /실행|운영|전략|실무|일정|데이터|근거|예산|보완|분담/.test(txt) ? 3 : 0;
   return sc;
 }
-/* 이번 차례의 미션 힌트 — 안건 맞춤 역할을 지을 때 정한 미션(diverge·target·build·risk). */
+/* 이번 차례의 미션 힌트 — 역할 제거(2026-11-25)로 항상 비어 있다. */
 function rtMissionHint(r, step) {
+  if (!RT_ROLES_ON) return "";
   try {
     var d = step && step.kind === "agent" ? dynRoleOf(r, step.id) : null;
     var m = d && String(d.mission || "");
     return RT_MISSION[m] ? m : "";
   } catch (e) { return ""; }
 }
-/* 미션 배정 우선순위: ①안건 맞춤 역할이 정한 미션 → ②역할 궁합 점수.
-   반드시 지키는 것: 발산이 전체 발언자의 절반 이상, 사회자는 수렴(중립), 타깃 1명 이상, 리스크는 최대 1명. */
+/* 2026-11-25 — 역할·고정 관점 제거.
+   예전에는 발산·타깃·보완·리스크를 사람마다 나눠 배정했다. 이제는 모두 같은 '제안(diverge)' 몫을 받고,
+   라운드 흐름(1R 제안 → 2R 줄이기·구체화 → 마무리)만 유지한다. 서로 다른 각도는 서버·프롬프트의
+   '앞사람과 겹치지 않기' 규칙이 만든다. 사회자만 수렴(converge). */
 function rtMissionPlan(r, parts, people, mod) {
   var slots = [];
   (parts || []).forEach(function (id) { if (id) slots.push({ kind: "agent", id: id }); });
@@ -6680,61 +6686,8 @@ function rtMissionPlan(r, parts, people, mod) {
     if (!mod) return false;
     return s.kind === "agent" ? sameName(s.id, mod) : sameName(s.nick, mod);
   }
-  var others = slots.filter(function (s) { return !isModSlot(s); });
-  var mslot = slots.filter(isModSlot)[0];
-  if (mslot) map[rtStepKey(mslot)] = "converge";
-  if (!others.length) return map;
-  /* 결정·찬반 안건은 '발산 절반 이상'을 강제하지 않는다 — 찬성 1·비용/리스크 1·조건 1로 균형(2026-11-24). */
-  var decAgenda = rtAgendaKind(rtSeedAgenda(r)) === "decision";
-  var need = decAgenda ? 1 : Math.max(1, Math.ceil(slots.length / 2));
-  var diverge = 0;
-  /* 1) 안건 맞춤 역할이 정한 미션을 먼저 따른다 */
-  others.forEach(function (s) {
-    var h = rtMissionHint(r, s);
-    if (h === "converge") h = "build";
-    map[rtStepKey(s)] = h || "";
-    if (h === "diverge") diverge++;
-  });
-  /* 2) 발산이 모자라면 — 미정 → 보완 → 리스크 → 타깃 순으로 올린다(타깃은 마지막까지 살린다) */
-  var order = ["", "build", "risk", "target"];
-  order.forEach(function (want) {
-    others.forEach(function (s) {
-      if (diverge >= need) return;
-      if (map[rtStepKey(s)] !== want) return;
-      map[rtStepKey(s)] = "diverge";
-      diverge++;
-    });
-  });
-  /* 3) 나머지 미정은 궁합 점수 순으로 보완 */
-  var rest = others.filter(function (s) { return map[rtStepKey(s)] === ""; });
-  rest.sort(function (a, b) { return rtMissionScore(r, b, "build") - rtMissionScore(r, a, "build"); });
-  rest.forEach(function (s) {
-    if (diverge < need) { map[rtStepKey(s)] = "diverge"; diverge++; return; }
-    map[rtStepKey(s)] = "build";
-  });
-  /* 4) 타깃 1명 이상 — 발산이 넘치면 발산 하나를 타깃으로 돌리고, 아니면 보완 자리에서 고른다. 리스크는 최대 1명. */
-  var hasTarget = others.some(function (s) { return map[rtStepKey(s)] === "target"; });
-  if (others.length >= 3 && !hasTarget) {
-    if (diverge > need) {
-      var dv = others.filter(function (s) { return map[rtStepKey(s)] === "diverge"; })
-        .sort(function (a, b) { return rtMissionScore(r, b, "target") - rtMissionScore(r, a, "target"); });
-      if (dv.length) { map[rtStepKey(dv[0])] = "target"; diverge--; }
-    } else {
-      var nonDiv = others.filter(function (s) { return map[rtStepKey(s)] !== "diverge"; });
-      if (nonDiv.length) {
-        nonDiv.sort(function (a, b) { return rtMissionScore(r, b, "target") - rtMissionScore(r, a, "target"); });
-        map[rtStepKey(nonDiv[0])] = "target";
-      }
-    }
-  }
-  var risks = others.filter(function (s) { return map[rtStepKey(s)] === "risk"; });
-  if (risks.length > 1) risks.slice(1).forEach(function (s) { map[rtStepKey(s)] = "build"; });
-  /* 결정 안건에 비용/리스크 담당이 하나도 없으면 발산 하나를 돌려 세운다. */
-  if (decAgenda && others.length >= 2 && !others.some(function (s) { return map[rtStepKey(s)] === "risk"; })) {
-    var dv2 = others.filter(function (s) { return map[rtStepKey(s)] === "diverge"; });
-    if (dv2.length > 1) map[rtStepKey(dv2[dv2.length - 1])] = "risk";
-  }
-  if (mslot) map[rtStepKey(mslot)] = "converge";
+  slots.forEach(function (s) { map[rtStepKey(s)] = isModSlot(s) ? "converge" : "diverge"; });
+  if (mod && slots.length) map[rtStepKey(slots.filter(isModSlot)[0])] = "converge";
   return map;
 }
 function rtMissionMine(step) {
@@ -6742,6 +6695,9 @@ function rtMissionMine(step) {
   return (run.missions && run.missions[rtStepKey(step)]) || step.mission || "";
 }
 function rtStepMissionNow() {
+  /* 2026-11-25 역할·고정 관점 제거 — 미션 문구를 프롬프트·서버로 보내지 않는다.
+     (라운드 흐름은 run.missions·buildSchedule 이 따로 쓰고, 프롬프트 문구로는 나가지 않는다) */
+  if (!RT_ROLES_ON) return "";
   return (run.active && run.mode === "roundtable" && run.curStep) ? rtMissionMine(run.curStep) : "";
 }
 
@@ -8530,13 +8486,15 @@ function brandLeadBlock(r) {
 /* 안건 맞춤 역할 블록 — 이 방의 AI 이름·역할·시점을 안건에 맞춰 바꿔 둔 것을 프롬프트 맨 위에 못박는다.
    2026-11-23 지용 님 — “역할 자체를 바꿔줘”. 예전 캐릭터 설명보다 이 역할이 우선한다. */
 function dynRoleBlock(r, agent) {
+  if (!RT_ROLES_ON) return "";   /* 2026-11-25 — 안건 맞춤 역할 블록 제거 */
   var d = (r && agent) ? dynRoleOf(r, agent.id) : null;
   if (!d || !String(d.name || "").trim()) return "";
   return "[이 방의 역할 — 안건 맞춤]\n· 이 방에서 너는 ‘" + d.name + "’(" + (d.role || d.name) + ")다. " + (d.desc || "") +
     "\n· 이 이름·역할·시점은 이 방의 안건에 맞춰 정해졌다. 예전 캐릭터 이름·직함으로 돌아가지 말고 이 역할로만 말한다.\n";
 }
-/* 이번 차례의 회의 미션 — 캐릭터는 유지하고 하는 일만 바꾼다. */
+/* 이번 차례의 회의 미션 — 2026-11-25 역할·고정 관점 제거로 쓰지 않는다. */
 function missionLeadBlock() {
+  if (!RT_ROLES_ON) return "";
   var mk = rtStepMissionNow();
   if (!mk) return "";
   return "[이번 회의 미션 — 역할 경계보다 우선]\n· 이번 미션: ‘" + (RT_MISSION[mk] ? RT_MISSION[mk].label : mk) + "’ — " + rtMissionText(mk, r) + "\n" +
@@ -8566,11 +8524,12 @@ function systemFor(agent, phase) {
         : " 마무리에서는 ① 결론 ② 남은 이견 ③ 다음 할 일을 3~4문장(최대 200자)으로 정리한다. 결론은 네가 낸다.") +
         (rtExtendCan() ? " 아직 짚을 쟁점이 남았다고 판단되면 요약 대신 빠진 쟁점을 짚는 질문만 쓰고 맨 끝에 [연장]을 붙인다(충분하면 붙이지 않는다)." : "")
       : " 진행 중에는 지금까지 나온 의견의 공통점 1가지와 이견 1가지를 짚고, 다음에 볼 관점 하나를 던진다.");
-  /* 이어받기·중복 금지 — "따로 말하는 느낌이 꼭 없게"(2026-11-22 지용 님). */
+  /* 이어받기·겹치기 금지 — 2026-11-25 지용 님 확정.
+     역할·고정 관점을 빼고 딱 한 줄 규칙으로 서로 다른 각도를 만든다. */
   var joinRule = isMod ? "" :
-    " 앞사람 말에서 한 단어만 받아치되, 대답 내용은 100% 네 역할로만 답한다(예: 가성비 담당은 물건·가격 얘기만, 공감 담당은 마음 위로만). 앞사람이 다른 담당의 얘기(의료·제품·수면법)를 했어도 그 얘기를 이어서 하지 않는다." +
+    " 앞사람과 같은 말·같은 결론을 반복하지 마라. 이미 나온 의견이면 말만 바꿔 반복하지 말고, ① 전혀 다른 각도 ② 빠진 현실 조건 ③ 다른 결의 구체적 대안 중 하나를 내라." +
     " 2번째 발언자부터는 바로 앞사람(또는 직전 2명 중 1명)의 말을 내용으로 이어받아 받아들일 점 1가지 또는 다른 각도 1가지만 보태고, 앞사람이 이미 낸 팁·시간·수치를 말만 바꿔 반복하지 않는다." +
-    " **앞사람 이름을 매번 부르지 마라.** ‘OO 님이 말한 ~는 좋은데’, ‘OO 님 말씀처럼’ 같은 기계적 인용 서두를 연속으로 쓰지 말고, 이름 호명은 꼭 짚어야 할 때만 가끔(전체 3~4턴 중 1번 이하) 쓴다. 평소에는 이름 없이 ‘그렇다면 ~’, ‘반대로 ~’, ‘현실적으로는 ~’처럼 내용만 자연스럽게 이어받거나 반론·보완하라. 이어받는 첫 문구도 매번 같게 쓰지 말고, 앞 발언과 같은 첫 구절(‘~이 중요하면’, ‘~라면’)을 연달아 쓰지 않는다. 칭찬만 하고 끝내지 않는다. 이어받은 뒤에는 네 역할 범위의 새 정보(이름·수치·조건)를 1가지 반드시 넣는다.";
+    " **앞사람 이름을 매번 부르지 마라.** ‘OO 님이 말한 ~는 좋은데’, ‘OO 님 말씀처럼’ 같은 기계적 인용 서두를 연속으로 쓰지 말고, 이름 호명은 꼭 짚어야 할 때만 가끔(전체 3~4턴 중 1번 이하) 쓴다. 평소에는 이름 없이 ‘그렇다면 ~’, ‘반대로 ~’, ‘현실적으로는 ~’처럼 내용만 자연스럽게 이어받거나 반론·보완하라. 이어받는 첫 문구도 매번 같게 쓰지 말고, 앞 발언과 같은 첫 구절(‘~이 중요하면’, ‘~라면’)을 연달아 쓰지 않는다. 칭찬만 하고 끝내지 않는다. 이어받은 뒤에는 새 정보(이름·수치·조건)를 1가지 반드시 넣는다.";
   var toneClause = toneOf(r) === "polite"
     ? "반드시 한국어 존댓말(~요/~습니다)로만 답하고, 가벼운 수다·농담·짧은 한마디에서도 반말을 쓰지 않는다. 문장 끝은 ‘~요’ 또는 ‘~습니다’로 맺고 ‘~죠/~지/~네/~군/~야/~어/~아/~자/~냐’ 같은 반말·구어 종결로 끝내지 않는다."
     : "다정하고 편한 친구 말투로 답하고, 한 말풍선 안에서 존댓말과 반말을 절대 섞지 않는다. 문장 끝은 ‘~했어/~같아/~어때/~해 봐/~줄래/~네/~야/~지’로 맺고, ‘~요/~죠/~네요/~어요/~아요/~해요/~예요/~이에요/~습니다/~인가요/~까요/~나요/~세요/~시다’로 끝내지 않는다. ‘~한다/~그렇다/~필요하다’ 같은 해라체·보고서체도 쓰지 않는다. 예시 문장을 그대로 옮길 때도 그 예시의 말투가 이 방 말투와 다르면 이 방 말투로 바꿔 쓴다.";
@@ -8586,11 +8545,11 @@ function systemFor(agent, phase) {
       (phase === "redirect" ? " 안건 확인·질문·인사 없이 새 방향의 첫 제안(이름·수치)부터 바로 말하라." : "");
   }
   var recBlock = (r && rtRecommend(r)) ? RECOMMEND_BLOCK : "";
-  return hostLeadBlock(r) + recBlock + brandLeadBlock(r) + dynRoleBlock(r, agent) + missionLeadBlock() + roleBoundBlock(r, agent) + toneRuleFor(r) + "\n" + base + roleDirective(r, agent) + reBlock + modBlock + "\n방: " + r.name + " / 안건: " + (r.agenda || "없음") +
+  return hostLeadBlock(r) + recBlock + brandLeadBlock(r) + toneRuleFor(r) + "\n" + base + roleDirective(r, agent) + reBlock + modBlock + "\n방: " + r.name + " / 안건: " + (r.agenda || "없음") +
     "\n함께 있는 AI: " + team +
     "\n규칙: " + toneClause + " " + lengthRule + " 마크다운 제목·이모지 금지. 확인하지 않은 수치·일정·재고를 아는 것처럼 말하지 않는다. 인사·추임새는 넣지 않는다. 앞사람 말은 내용으로 이어받고, 이름 호명은 3~4턴 중 1번 이하로 아껴 쓴다. 자기 이름을 매번 붙이지 않는다." + joinRule +
     " 자연스러운 한국어 일상 표현으로 쓴다(‘아이가 몇 주째 자궁에 있는지’ 같은 직역·의학투 대신 ‘임신 몇 주 차인지’)." +
-    " 네 역할 경계(공감 담당은 감정·위로, 가성비 담당은 제품·비용, 비판 담당은 리스크)를 지키고 다른 역할의 답을 대신하지 않는다. 참여자를 부를 때는 채팅방에 보이는 닉네임으로만 부르고, 실명이나 다른 별명으로 부르지 않는다." +
+    " 다른 전문 영역의 단정(의료·법률·금융 판단)은 하지 않는다. 참여자를 부를 때는 채팅방에 보이는 닉네임으로만 부르고, 실명이나 다른 별명으로 부르지 않는다." +
     roundRule(agent, phase) +
     "\n" + SPECIFICITY_RULE.replace("1~2개 이상 콕 집어 넣어 2~3문장으로", "1가지 이상 콕 집어 넣어 1~2문장으로") + " " + NO_ASSUME_RULE + " " + FACT_RULE;
 }
@@ -8751,10 +8710,8 @@ function phaseInstruction(phase, r, agent) {
   else if (phase === "mention") core = "사용자가 이름을 불렀다. 짧게 답하고, 자기 몫에서 도울 일을 한 가지 제안하라.";
   else core = "안건에 맞게 짧게 발언하라.";
   /* 2026-11-22 지용 님 — 어느 단계든 카톡처럼 짧게. 사회자는 방향을 잡고 마무리하는 몫이다.
-     2026-11-23 — 이번 회의 미션(발산·타깃·보완·리스크·수렴)을 지시 앞에 붙인다. 캐릭터는 유지, 하는 일만 바뀐다. */
-  var mk = rtStepMissionNow();
-  var missionLead = mk && mk !== "converge" ? "[이번 회의 미션] " + rtMissionText(mk, r) + " — 이번 토론에서 네가 하는 일이다(말투·캐릭터는 그대로). " : "";
-  return missionLead + core + " " + brevityForTurn(agent, phase) + (dupRetryNote ? " " + dupRetryNote : "");
+     2026-11-25 — 역할·회의 미션 제거로 지시 앞 미션 문구를 붙이지 않는다. */
+  return core + " " + brevityForTurn(agent, phase) + (dupRetryNote ? " " + dupRetryNote : "");
 }
 
 function turnPrompt(agent, phase) {
@@ -10760,6 +10717,14 @@ function rtBrandFromSheet() {
   return el ? String(el.value || "").replace(/\s+/g, " ").trim().slice(0, 300) : "";
 }
 /* =========================================================
+   [2026-11-25 지용 님 확정 — 역할 생성·고정 관점 제거]
+   안건마다 'OO 코치' 이름표·부제를 새로 만들던 구조를 껐다. 이유:
+   · 부제(수유·유모차)에 갇혀 7살 여행에서 엉뚱한 말을 하고,
+   · 역할 생성이 3~5초 걸려 초대 화면 로딩·폴백 버그를 만들었다.
+   → AI는 기본 이름·성향 그대로 두고, 서버·프롬프트의 '겹치기 금지' 한 줄로만 갈라진다.
+   아래 역할 코드는 옛 방 데이터 호환을 위해 남겨 두되 RT_ROLES_ON=false 로 동작하지 않는다.
+   ========================================================= */
+/* =========================================================
    안건 맞춤 역할 만들기 (2026-11-23 지용 님 — “역할 자체를 바꿔줘”)
    ---------------------------------------------------------
    토론을 시작할 때 안건·브랜드를 서버(mode:"roles")에 보내 이 방 프리셋 AI의
@@ -10768,7 +10733,7 @@ function rtBrandFromSheet() {
    · 결과는 r.dynamicRoles 로 이 방에만 저장하고 settings.dynamicRoles 로 서버에 남긴다.
    · 안건·브랜드·멤버·사회자가 그대로면 다시 만들지 않는다(같은 방에서 토론을 반복해도 이름이 흔들리지 않게).
    ========================================================= */
-var RT_ROLES_ON = true;
+var RT_ROLES_ON = false;   /* 2026-11-25 — 역할 생성·이름표·부제 제거(지용 님 확정). true 로 되돌리면 옛 동작이 살아난다. */
 /* v3 (2026-11-24) — 역할 이름 규칙이 바뀌어('2~3글자 + 코치' 통일) 예전 세트는 한 번 다시 세팅한다.
    · v1: 결정·찬반 안건에 마케팅/기획 역할이 나오던 세대
    · v2: 결정형 역할로 바뀌었지만 이름이 '채용 기준·실무 팀장·온보딩 코치'처럼 섞이던 세대
@@ -11218,7 +11183,7 @@ var RT_CARD_WAIT = {};   /* roomId → 지금 확정 세트를 만드는 중 */
 var RT_CARD_READY = {};  /* roomId → 확정된 키 — 이 키가 같으면 다시 만들지 않는다 */
 var RT_CARD_PENDING = {};/* roomId → 확정 전 키 — 카드 자리에 '세팅 중' 로딩을 보여 준다 */
 var RT_SHOWN = {};       /* roomId → 지금 카드에 실제로 그려진 역할 — 누른 카드의 이름을 그대로 쓰기 위해 */
-function rtCardPending(r) { return !!(r && r.id && RT_CARD_PENDING[r.id]); }
+function rtCardPending(r) { return !!(RT_ROLES_ON && r && r.id && RT_CARD_PENDING[r.id]); }
 function rtCardKey(r) {
   return [RT_ROLES_VER, rtSeedAgenda(r), String((r && r.brand) || "").trim(),
     String((r && categoryKeyOf(r)) || "")].join("|");
@@ -11274,7 +11239,7 @@ function rtCardRolesBuild(r) {
 }
 /* 카드 한 장의 역할 — 이미 방에 들어온 AI는 그 AI의 실제 이름이 우선(카드와 방이 어긋나지 않게) */
 function rtCardRoleOf(r, ex) {
-  if (!r || !ex) return null;
+  if (!RT_ROLES_ON || !r || !ex) return null;
   var lid = findExpertAgent(ex.id);
   var d = lid ? dynRoleOf(r, lid) : null;
   if (d && String(d.name || "").trim()) return d;
@@ -11284,6 +11249,7 @@ function rtCardRoleOf(r, ex) {
 /* AI 가 방에 들어오는 순간 — 카드에서 본 이름·역할 그대로 r.dynamicRoles 에 옮긴다.
    (그래서 참여 칩·첫 입장 인사·@이름이 카드와 같은 이름으로 나온다) */
 function rtAssignCardRole(r, id) {
+  if (!RT_ROLES_ON) return false;
   if (!r || !id) return false;
   if (roleModeOf(r) === "manual") return false;
   var a = state.agents[id];
@@ -11330,6 +11296,7 @@ function rtCardMapFromDynamic(r) {
   return Object.keys(out).length ? out : null;
 }
 function rtPrepareCardRoles(r) {
+  if (!RT_ROLES_ON) return;   /* 역할 제거(2026-11-25) — 초대 카드는 기본 AI 이름으로 바로 그린다 */
   if (!r || !r.id || roleModeOf(r) === "manual") return;
   var key = rtCardKey(r);
   var cur = RT_CARD[r.id];
@@ -11495,8 +11462,8 @@ async function rtBeginWithBrief(r, brand, agenda, plan, rounds) {
     try { dbSaveSettings(r); } catch (e) {}
     save();
   }
-  /* 역할 짜기와 팩트 브리핑을 동시에 보낸다 — 둘 다 토론 시작 전 1회(대기 5~8초). */
-  if (RT_ROLES_ON || RT_BRIEF_ON) toast("안건에 맞는 역할과 최신 사실을 확인하고 있어요 · 5~8초");
+  /* 팩트 브리핑만 토론 시작 전 1회(2026-11-25 — 역할 생성 제거로 대기가 짧아졌다). */
+  if (RT_BRIEF_ON) toast("최신 사실을 확인하고 있어요 · 3~6초");
   var jobs = [RT_ROLES_ON ? rtEnsureRoles(r, agenda, brand, plan.moderator, plan.participants) : Promise.resolve({ applied: false })];
   jobs.push(RT_BRIEF_ON ? rtFetchBrief(r, agenda, brand) : Promise.resolve(null));
   var done = await Promise.all(jobs);
@@ -12274,9 +12241,7 @@ function openInviteHub(tab) {
   if (needStartFirst()) return;
   if (!activeRoom()) { toast("방을 먼저 만들어 주세요"); return; }
   invTarget = "room";
-  /* 초대 창을 여는 순간부터 방 제목에 맞는 역할로 카드를 보여 준다(2026-11-24).
-     로컬 계산은 즉시(0ms), 서버 보정은 뒤에서 한 번 — 먼저 뜨는 이름이 기본 이름이 아니게. */
-  try { rtPrepareCardRoles(activeRoom()); } catch (e) {}
+  /* 2026-11-25 — 역할 생성 제거로 초대 창은 기본 AI 카드로 즉시 열린다(3~5초 로딩 없음). */
   aiTab(tab || "kkiri");
   openModal("inviteModal");
 }
@@ -15011,7 +14976,7 @@ function renderExpertPicker() {
     var nm = (dr && String(dr.name || "").trim()) || ex.name;
     /* 부제는 카드마다 빠짐없이 — 비었거나 이름과 같으면 짧은 영역명으로 채운다(2026-11-24) */
     var rl = rtRoleSub(nm, (dr && dr.role) || ex.role);
-    var ds = (dr && String(dr.desc || "").trim()) || "";
+    var ds = (dr && String(dr.desc || "").trim()) || ex.desc || "";
     if (dr) shownNow[ex.id] = { name: nm, role: rl, desc: dr.desc || ds, mission: dr.mission || "" };
     h += '<button type="button" class="expert-card' + (added ? " added" : "") + (ownerNow ? "" : " locked") + '" data-expert="' + esc(ex.id) + '"' + (added ? ' aria-disabled="true"' : "") + '>' +
       '<span class="e-top"><span class="e-ava' + (avIconName(ex.id, ex.name) ? " char" : "") + '" aria-hidden="true">' + expertIcoHtml(ex.id, ex.name, ex.avatar, "", "spark") + '</span>' +
@@ -16631,6 +16596,7 @@ function greetAgentOnEntry(agentId, room) {
          인사말에는 이름이 아니라 화면 이름(roomAgentName)이 붙는데 그 값이 기본 이름이었다.
    → 인사 직전에 이 방 프리셋 AI 전원의 이름을 동기적으로 채워 두고, 이미 있는 이름은 건드리지 않는다. */
 function rtEnsureGreetRoles(r, ids) {
+  if (!RT_ROLES_ON) return false;
   if (!r || roleModeOf(r) === "manual") return false;
   var all = (r.members || []).slice();
   (ids || []).forEach(function (id) { if (all.indexOf(id) < 0) all.push(id); });
@@ -16946,7 +16912,7 @@ async function cloudExpertTurn(agent, phase) {
     detail: detailTurn,
     facts: factList.length ? factList : undefined,
     instruction: "[브랜드·배경 사실] " + (brandNow ? brandNow + " — 이 사실과 다른 업종으로 해석하지 마라. " : "아직 없다 — 상황·조건·수치를 추측해 단정하지 마라. ") +
-      phaseInstruction(phase, r, agent) + roundRule(agent, phase) + (ro ? " 너의 이 방 역할은 ‘" + ro.label + "’이다: " + ro.focus + "." : "") +
+      phaseInstruction(phase, r, agent) + roundRule(agent, phase) + (RT_ROLES_ON && ro ? " 너의 이 방 역할은 ‘" + ro.label + "’이다: " + ro.focus + "." : "") +
       " " + (toneOf(r) === "polite"
         ? "반드시 한국어 존댓말(~요/~습니다)로만 답하고, 수다·농담·짧은 반응에서도 반말을 쓰지 않는다."
         : "다정하고 편한 친구 말투(~했어, ~같아, ~어때?)로 답하고, ‘~한다/~그렇다’ 같은 해라체·보고서체와 존댓말(~요/~습니다)은 쓰지 않는다.") +
